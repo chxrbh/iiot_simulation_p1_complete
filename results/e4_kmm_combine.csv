@@ -1,7 +1,8 @@
-k_fog_aggregates,he_additions,he_additions_excluding_identity,combine_latency_ms_median,combine_latency_ms_std,bytes_received,ciphertext_bytes,within_500ms,note
-2,2,1,176.9937500357628,63.13987071604292,1024,512,True,KMM combine is homomorphic addition only; no Paillier decryption occurs
-5,5,4,170.31954997219145,21.630728785892373,2560,512,True,KMM combine is homomorphic addition only; no Paillier decryption occurs
-10,10,9,154.56429996993393,20.563760135372135,5120,512,True,KMM combine is homomorphic addition only; no Paillier decryption occurs
-20,20,19,182.95759992906824,16.563544882678894,10240,512,True,KMM combine is homomorphic addition only; no Paillier decryption occurs
-50,50,49,154.33724998729303,51.25636224261536,25600,512,True,KMM combine is homomorphic addition only; no Paillier decryption occurs
-100,100,99,74.14554996648803,23.122678416872727,51200,512,True,KMM combine is homomorphic addition only; no Paillier decryption occurs
+k_fog_aggregates,he_additions,combine_latency_ms_median,combine_latency_ms_std,bytes_received,ciphertext_bytes,within_500ms,note
+1,0,0.003400025889277458,0.0006724170274694378,512,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+2,1,0.042300031054764986,0.005288874424353349,1024,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+5,4,0.13734999811276793,0.10063470969367486,2560,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+10,9,0.35550002939999104,0.184698914521342,5120,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+20,19,0.5918000242672861,0.10343576529212076,10240,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+50,49,1.4908500015735626,0.14105856874748798,25600,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+100,99,3.0852999771013856,0.48954281406863703,51200,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"

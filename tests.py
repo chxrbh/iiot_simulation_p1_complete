@@ -108,12 +108,12 @@ class P1RepairTests(unittest.TestCase):
         self.assertEqual(rows[0]["provisioned_edges"], "F1->F4;F2->F4")
 
     def test_e4_kmm_combine_shape_and_bytes(self) -> None:
-        rows = run_e4(self.pub, seed=7, reps=1, k_values=[2, 5])
-        self.assertEqual([row["k_fog_aggregates"] for row in rows], [2, 5])
+        rows = run_e4(self.pub, seed=7, reps=1, k_values=[1, 2, 5])
+        self.assertEqual([row["k_fog_aggregates"] for row in rows], [1, 2, 5])
         for row in rows:
-            self.assertEqual(row["he_additions"], row["k_fog_aggregates"])
+            self.assertEqual(row["he_additions"], row["k_fog_aggregates"] - 1)
             self.assertEqual(row["bytes_received"], row["k_fog_aggregates"] * row["ciphertext_bytes"])
-        self.assertEqual(E4_K_VALUES, [2, 5, 10, 20, 50, 100])
+        self.assertEqual(E4_K_VALUES, [1, 2, 5, 10, 20, 50, 100])
 
     def test_e6_fault_model_pairs_and_ack_bound(self) -> None:
         rows = run_e6()

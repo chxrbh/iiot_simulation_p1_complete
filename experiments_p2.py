@@ -138,29 +138,29 @@ def run_e4(
     k_values = k_values or E4_K_VALUES
     rows = []
     ct_bytes = paillier_ciphertext_bytes(pub_key)
-    kmm = KMM({node_id: b"" for node_id in FOG_NODES})
     for k in k_values:
+        if k < 1:
+            raise ValueError("E4 requires at least one fog aggregate")
         latencies = []
         for rep in range(reps):
             if progress:
                 progress(f"E4 k={k} rep={rep + 1}/{reps}")
-            aggregates = {
-                f"F{i + 1}": paillier_encrypt(pub_key, rng.randint(0, 100_000), rng)
-                for i in range(k)
-            }
-            _, latency_ms = kmm.combine(aggregates, pub_key)
-            latencies.append(latency_ms)
+            aggregates = [paillier_encrypt(pub_key, rng.randint(0, 100_000), rng) for _ in range(k)]
+            t0 = time.perf_counter()
+            combined = aggregates[0]
+            for ciphertext in aggregates[1:]:
+                combined = combined + ciphertext
+            latencies.append((time.perf_counter() - t0) * 1000.0)
         rows.append(
             {
                 "k_fog_aggregates": k,
-                "he_additions": k,
-                "he_additions_excluding_identity": k - 1,
+                "he_additions": k - 1,
                 "combine_latency_ms_median": statistics.median(latencies),
                 "combine_latency_ms_std": statistics.stdev(latencies) if len(latencies) > 1 else 0.0,
                 "bytes_received": k * ct_bytes,
                 "ciphertext_bytes": ct_bytes,
                 "within_500ms": statistics.median(latencies) <= WINDOW_MS,
-                "note": "KMM combine is homomorphic addition only; no Paillier decryption occurs",
+                "note": "KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption",
             }
         )
     return rows
