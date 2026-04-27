@@ -14,6 +14,11 @@ from config import (
     E4_K_VALUES,
     E6_FAILURE_SCENARIOS,
     E6_METHODS,
+    E6_SEEDS,
+    E6_CLUSTER_DETECT_MS,
+    E6_CLUSTER_REROUTE_MS,
+    E6_CLUSTER_SELECTION_MS,
+    E6_MULTILAYER_DETECTION_MS,
     E7_METHODS,
     E7_STAGE_COLUMNS,
     E8_SCENARIOS,
@@ -121,17 +126,48 @@ class P1RepairTests(unittest.TestCase):
 
     def test_e6_fault_model_pairs_and_ack_bound(self) -> None:
         rows = run_e6()
-        self.assertEqual(len(rows), len(E6_FAILURE_SCENARIOS) * len(E6_METHODS))
-        ack_rows = [row for row in rows if row["method"] == "ack_kmm"]
+        self.assertEqual(len(rows), len(E6_FAILURE_SCENARIOS) * len(E6_SEEDS) * len(E6_METHODS))
+        self.assertEqual(
+            set(E6_METHODS),
+            {"b1_gossip", "b2_replication", "checkpoint", "b4_multilayer", "b5_fog_clustering", "proposed_ack_kmm"},
+        )
+        ack_rows = [row for row in rows if row["method"] == "proposed_ack_kmm"]
         for row in ack_rows:
-            remaining = row["window_ms"] - row["failure_time_ms"]
-            self.assertEqual(row["data_loss_ms"], min(remaining, T_ACK_MS + KMM_PROV_MS))
-        before = [row for row in rows if row["scenario"] == "before_window"]
-        none = next(row for row in before if row["method"] == "none")
-        replication = next(row for row in before if row["method"] == "replication")
-        ack = next(row for row in before if row["method"] == "ack_kmm")
-        self.assertGreater(replication["storage_overhead_factor"], ack["storage_overhead_factor"])
-        self.assertGreaterEqual(none["data_loss_ms"], ack["data_loss_ms"])
+            self.assertEqual(row["recovery_latency_ms"], T_ACK_MS + KMM_PROV_MS)
+            self.assertEqual(row["total_readings"], row["recovered_readings"] + row["lost_readings"])
+            self.assertAlmostEqual(row["data_loss_rate"], row["lost_readings"] / row["total_readings"])
+            self.assertAlmostEqual(row["message_overhead"], row["measured_message_units"] / row["baseline_message_units"])
+            self.assertAlmostEqual(row["compute_overhead"], row["measured_compute_ops"] / row["baseline_compute_ops"])
+        before = [row for row in rows if row["scenario"] == "fail_0ms" and row["seed"] == 0]
+        gossip = next(row for row in before if row["method"] == "b1_gossip")
+        replication = next(row for row in before if row["method"] == "b2_replication")
+        checkpoint = next(row for row in before if row["method"] == "checkpoint")
+        multilayer = next(row for row in before if row["method"] == "b4_multilayer")
+        clustering = next(row for row in before if row["method"] == "b5_fog_clustering")
+        ack = next(row for row in before if row["method"] == "proposed_ack_kmm")
+        self.assertEqual(replication["recovery_latency_ms"], 0.0)
+        self.assertEqual(checkpoint["recovery_latency_ms"], 500.0)
+        self.assertEqual(gossip["recovery_latency_ms"], 1500.0)
+        self.assertEqual(multilayer["baseline_id"], "B4")
+        self.assertEqual(multilayer["recovery_latency_ms"], E6_MULTILAYER_DETECTION_MS)
+        self.assertEqual(clustering["baseline_id"], "B5")
+        self.assertEqual(
+            clustering["recovery_latency_ms"],
+            E6_CLUSTER_DETECT_MS + E6_CLUSTER_SELECTION_MS + E6_CLUSTER_REROUTE_MS,
+        )
+        self.assertGreater(replication["message_overhead"], ack["message_overhead"])
+        self.assertGreater(replication["compute_overhead"], checkpoint["compute_overhead"])
+        self.assertGreater(checkpoint["checkpoint_writes"], 0)
+        self.assertGreater(ack["control_messages"], 0)
+        self.assertLess(multilayer["data_loss_rate"], gossip["data_loss_rate"])
+        self.assertGreater(multilayer["compute_overhead"], gossip["compute_overhead"])
+        self.assertGreater(gossip["data_loss_rate"], clustering["data_loss_rate"])
+        self.assertGreater(clustering["data_loss_rate"], multilayer["data_loss_rate"])
+        self.assertEqual(replication["lost_readings"], 0)
+        mid_window = [row for row in rows if row["scenario"] == "mid_window_250ms" and row["seed"] == 0]
+        mid_checkpoint = next(row for row in mid_window if row["method"] == "checkpoint")
+        mid_ack = next(row for row in mid_window if row["method"] == "proposed_ack_kmm")
+        self.assertGreater(mid_checkpoint["data_loss_rate"], mid_ack["data_loss_rate"])
 
     def test_e7_pipeline_shape_totals_and_storage(self) -> None:
         rows, summary = run_e7(
@@ -153,8 +189,13 @@ class P1RepairTests(unittest.TestCase):
             self.assertAlmostEqual(float(row["total_ms"]), stage_total, places=9)
         storage_by_method = {row["method"]: row["storage_bytes_per_window"] for row in rows if row["window"] == 1}
         self.assertGreater(storage_by_method["cloud_only"], storage_by_method["fog_plaintext"])
-        self.assertGreater(storage_by_method["paillier_nobatch"], storage_by_method["ours"])
+        self.assertGreater(storage_by_method["paillier_fog_convert"], storage_by_method["ours"])
         self.assertNotEqual(storage_by_method["fog_plaintext"], storage_by_method["ours"])
+        items_by_method = {row["method"]: row["storage_items_per_window"] for row in rows if row["window"] == 1}
+        self.assertEqual(items_by_method["cloud_only"], 5)
+        self.assertEqual(items_by_method["fog_plaintext"], 1)
+        self.assertEqual(items_by_method["paillier_fog_convert"], 5)
+        self.assertEqual(items_by_method["ours"], 1)
 
     def test_e8_blast_radius(self) -> None:
         rows = run_e8()

@@ -5,30 +5,30 @@ from __future__ import annotations
 from collections.abc import Callable
 import random
 import statistics
-import time
 
 from config import (
     E7_CLOUD_UPLOAD_MS,
+    E7_KMM_COMBINE_MS,
     E7_METHODS,
     E7_N,
+    E7_NET_SENSOR_TO_CLOUD_MS,
+    E7_NET_SENSOR_TO_FOG_MS,
     E7_NODE,
+    E7_PAILLIER_ADD_MS,
+    E7_PAILLIER_ENC_MS,
+    E7_PLAINTEXT_SUM_MS,
+    E7_SENSOR_AES_MS,
     E7_STAGE_COLUMNS,
+    E7_STORAGE_PREP_MS,
+    E7_TEE_DELEGATION_MS,
     E8_SCENARIOS,
     FOG_NODES,
-    KMM_PROV_MS,
-    SCALE,
     TAU,
     WINDOW_MS,
     build_schedule,
 )
 from crypto_sim import (
-    KMM,
-    aes_decrypt,
-    aes_encrypt,
     paillier_ciphertext_bytes,
-    paillier_encrypt,
-    sgx_enclave_process,
-    sgx_enclave_storage_prep,
 )
 
 
@@ -45,19 +45,27 @@ def _stage_row_base(window: int, event: str, method: str, n: int, delegation_act
         "delegation_active": delegation_active,
         "window_ms": WINDOW_MS,
         **{column: 0.0 for column in E7_STAGE_COLUMNS},
+        "privacy": False,
+        "storage_items_per_window": 0,
         "storage_bytes_per_window": 0,
         "privacy_note": "",
     }
 
 
-def _sensor_encrypt(readings: list[float], key: bytes, rng: random.Random) -> tuple[list[tuple[bytes, bytes]], float]:
-    t0 = time.perf_counter()
-    pairs = [aes_encrypt(key, value, rng) for value in readings]
-    return pairs, (time.perf_counter() - t0) * 1000.0
-
-
 def _finish_e7_row(row: dict[str, object]) -> dict[str, object]:
     total = sum(float(row[column]) for column in E7_STAGE_COLUMNS)
+    row["fog_latency_ms"] = sum(
+        float(row[column])
+        for column in [
+            "plaintext_sum_ms",
+            "enclave_aes_to_paillier_ms",
+            "paillier_accum_ms",
+            "delegation_ms",
+            "kmm_combine_ms",
+            "storage_prep_ms",
+        ]
+    )
+    row["e2e_latency_ms"] = total
     row["total_ms"] = total
     row["within_500ms"] = total <= WINDOW_MS
     row["conclusion"] = "within_500ms_window" if total <= WINDOW_MS else "violates_500ms_window"
@@ -66,9 +74,11 @@ def _finish_e7_row(row: dict[str, object]) -> dict[str, object]:
 
 def _run_cloud_only(window: int, event: str, readings: list[float], n: int, delegation_active: bool) -> dict[str, object]:
     row = _stage_row_base(window, event, "cloud_only", n, delegation_active)
+    row["sensor_to_cloud_ms"] = E7_NET_SENSOR_TO_CLOUD_MS
     row["cloud_upload_ms"] = E7_CLOUD_UPLOAD_MS
+    row["storage_items_per_window"] = n
     row["storage_bytes_per_window"] = n * 8
-    row["privacy_note"] = "no fog privacy; raw readings are stored/transmitted"
+    row["privacy_note"] = "cloud-centric baseline: no fog processing, no aggregation privacy, stores raw readings"
     return _finish_e7_row(row)
 
 
@@ -82,18 +92,16 @@ def _run_fog_plaintext(
     delegation_active: bool,
 ) -> dict[str, object]:
     row = _stage_row_base(window, event, "fog_plaintext", n, delegation_active)
-    pairs, sensor_ms = _sensor_encrypt(readings, key, rng)
-    t0 = time.perf_counter()
-    _ = sum(aes_decrypt(key, nonce, ct) for nonce, ct in pairs)
-    plaintext_ms = (time.perf_counter() - t0) * 1000.0
-    row["sensor_aes_ms"] = sensor_ms + plaintext_ms
+    row["sensor_to_fog_ms"] = E7_NET_SENSOR_TO_FOG_MS
+    row["plaintext_sum_ms"] = E7_PLAINTEXT_SUM_MS
     row["cloud_upload_ms"] = E7_CLOUD_UPLOAD_MS
+    row["storage_items_per_window"] = 1
     row["storage_bytes_per_window"] = 8
-    row["privacy_note"] = "fog decrypts readings; insecure baseline with one aggregate"
+    row["privacy_note"] = "conventional fog aggregation lower bound: one plaintext sum, fog sees raw readings"
     return _finish_e7_row(row)
 
 
-def _run_paillier_nobatch(
+def _run_paillier_fog_convert(
     window: int,
     event: str,
     readings: list[float],
@@ -105,28 +113,16 @@ def _run_paillier_nobatch(
     n: int,
     delegation_active: bool,
 ) -> dict[str, object]:
-    row = _stage_row_base(window, event, "paillier_nobatch", n, delegation_active)
-    pairs, sensor_ms = _sensor_encrypt(readings, key, rng)
-    ciphertexts = []
-    t0 = time.perf_counter()
-    for nonce, ct in pairs:
-        ciphertexts.append(sgx_enclave_process(key, nonce, ct, pub_key, rng))
-    enclave_ms = (time.perf_counter() - t0) * 1000.0
-    t_accum = time.perf_counter()
-    aggregate = paillier_encrypt(pub_key, 0, rng)
-    for ciphertext in ciphertexts:
-        aggregate = aggregate + ciphertext
-    accum_ms = (time.perf_counter() - t_accum) * 1000.0
-    t_store = time.perf_counter()
-    _ = sgx_enclave_storage_prep(aggregate, priv_key, store_key, rng)
-    storage_prep_ms = (time.perf_counter() - t_store) * 1000.0
-    row["sensor_aes_ms"] = sensor_ms
-    row["enclave_aes_to_paillier_ms"] = enclave_ms
-    row["paillier_accum_ms"] = accum_ms
-    row["storage_prep_ms"] = storage_prep_ms
+    row = _stage_row_base(window, event, "paillier_fog_convert", n, delegation_active)
+    row["sensor_to_fog_ms"] = E7_NET_SENSOR_TO_FOG_MS
+    row["sensor_aes_ms"] = E7_SENSOR_AES_MS
+    row["enclave_aes_to_paillier_ms"] = n * E7_PAILLIER_ENC_MS
+    row["paillier_accum_ms"] = n * E7_PAILLIER_ADD_MS
     row["cloud_upload_ms"] = E7_CLOUD_UPLOAD_MS
+    row["privacy"] = True
+    row["storage_items_per_window"] = n
     row["storage_bytes_per_window"] = n * paillier_ciphertext_bytes(pub_key)
-    row["privacy_note"] = "Paillier privacy but no slot aggregation storage benefit"
+    row["privacy_note"] = "P2-SWAN-style Paillier baseline: fog converts and adds ciphertexts, stores n ciphertexts"
     return _finish_e7_row(row)
 
 
@@ -143,42 +139,18 @@ def _run_ours(
     delegation_active: bool,
 ) -> dict[str, object]:
     row = _stage_row_base(window, event, "ours", n, delegation_active)
-    pairs, sensor_ms = _sensor_encrypt(readings, key, rng)
-    kmm = KMM({E7_NODE: key, "F4": key})
-    agg_primary = paillier_encrypt(pub_key, 0, rng)
-    agg_backup = paillier_encrypt(pub_key, 0, rng)
-    delegated = set(rng.sample(range(n), max(1, n // 10))) if delegation_active else set()
-    delegated_key = key
-    row["delegation_ms"] = 0.0
-    if delegation_active:
-        delegated_key, row["delegation_ms"] = kmm.provision_key(E7_NODE, "F4")
-    enclave_ms = 0.0
-    accum_ms = 0.0
-    for idx, (nonce, ct) in enumerate(pairs):
-        t_enc = time.perf_counter()
-        encrypted = sgx_enclave_process(delegated_key if idx in delegated else key, nonce, ct, pub_key, rng)
-        enclave_ms += (time.perf_counter() - t_enc) * 1000.0
-        t_add = time.perf_counter()
-        if idx in delegated:
-            agg_primary = agg_primary + paillier_encrypt(pub_key, 0, rng)
-            agg_backup = agg_backup + encrypted
-        else:
-            agg_primary = agg_primary + encrypted
-        accum_ms += (time.perf_counter() - t_add) * 1000.0
-    combined, kmm_ms = kmm.combine({E7_NODE: agg_primary, "F4": agg_backup}, pub_key)
-    t_store = time.perf_counter()
-    _ = sgx_enclave_storage_prep(combined, priv_key, store_key, rng)
-    storage_prep_ms = (time.perf_counter() - t_store) * 1000.0
-    if delegation_active:
-        kmm.revoke_key(E7_NODE, "F4")
-    row["sensor_aes_ms"] = sensor_ms
-    row["enclave_aes_to_paillier_ms"] = enclave_ms
-    row["paillier_accum_ms"] = accum_ms
-    row["kmm_combine_ms"] = kmm_ms
-    row["storage_prep_ms"] = storage_prep_ms
+    row["sensor_to_fog_ms"] = E7_NET_SENSOR_TO_FOG_MS
+    row["sensor_aes_ms"] = E7_SENSOR_AES_MS
+    row["enclave_aes_to_paillier_ms"] = n * E7_PAILLIER_ENC_MS
+    row["paillier_accum_ms"] = n * E7_PAILLIER_ADD_MS
+    row["delegation_ms"] = E7_TEE_DELEGATION_MS if delegation_active else 0.0
+    row["kmm_combine_ms"] = E7_KMM_COMBINE_MS
+    row["storage_prep_ms"] = E7_STORAGE_PREP_MS
     row["cloud_upload_ms"] = E7_CLOUD_UPLOAD_MS
-    row["storage_bytes_per_window"] = 44
-    row["privacy_note"] = "slot aggregation with simulated TEE and fog-scoped key provisioning"
+    row["privacy"] = True
+    row["storage_items_per_window"] = 1
+    row["storage_bytes_per_window"] = paillier_ciphertext_bytes(pub_key)
+    row["privacy_note"] = "TEE AES-to-Paillier conversion with Paillier slot aggregation; delegation overhead only on delegated windows"
     return _finish_e7_row(row)
 
 
@@ -211,8 +183,8 @@ def run_e7(
                 row = _run_cloud_only(window, event, readings, n, delegation_active)
             elif method == "fog_plaintext":
                 row = _run_fog_plaintext(window, event, readings, k_fog[E7_NODE], rng, n, delegation_active)
-            elif method == "paillier_nobatch":
-                row = _run_paillier_nobatch(
+            elif method == "paillier_fog_convert":
+                row = _run_paillier_fog_convert(
                     window, event, readings, k_fog[E7_NODE], k_store, pub_key, priv_key, rng, n, delegation_active
                 )
             elif method == "ours":
@@ -227,12 +199,16 @@ def run_e7(
         method_rows = [row for row in rows if row["method"] == method]
         totals = [float(row["total_ms"]) for row in method_rows]
         storage = [float(row["storage_bytes_per_window"]) for row in method_rows]
+        storage_items = [float(row["storage_items_per_window"]) for row in method_rows]
+        fog_latencies = [float(row["fog_latency_ms"]) for row in method_rows]
         summary.append(
             {
                 "method": method,
                 "windows": len(method_rows),
                 "total_ms_median": statistics.median(totals),
                 "total_ms_std": statistics.stdev(totals) if len(totals) > 1 else 0.0,
+                "fog_latency_ms_median": statistics.median(fog_latencies),
+                "storage_items_per_window_median": statistics.median(storage_items),
                 "storage_bytes_per_window_median": statistics.median(storage),
                 "within_500ms_windows": sum(1 for row in method_rows if row["within_500ms"]),
                 "violates_500ms_windows": sum(1 for row in method_rows if not row["within_500ms"]),

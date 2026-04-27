@@ -95,8 +95,12 @@ def write_p2_summary(
             f"Run mode: {'quick smoke test' if quick else 'full configured experiment'}; "
             f"key_bits={key_bits}; Paillier backend={paillier_backend}.\n\n"
         )
-        fh.write("Implemented P2 experiments: E3b multi-source correctness, E4 KMM combine overhead, and E6 ACK/KMM fault detection.\n\n")
-        fh.write("E6 note: fault detection is a deterministic analytical timing model, not live distributed fault injection.\n")
+        fh.write("Implemented P2 experiments: E3b multi-source correctness, E4 KMM combine overhead, and E6 ACK/KMM fault recovery.\n\n")
+        fh.write(
+            "E6 note: fault recovery is an analytical reading-loss model comparing B1 gossip-based detection, "
+            "B2 replication-based fault tolerance, B3 checkpoint/restart, B4 multilayer detection, "
+            "B5 fog-clustering fault tolerance, and proposed ACK+KMM.\n"
+        )
 
 
 def write_p3_summary(
@@ -121,5 +125,10 @@ def write_p3_summary(
             f"key_bits={key_bits}; Paillier backend={paillier_backend}.\n\n"
         )
         fh.write(f"## E7 End-to-End Pipeline\n{e7_conclusion}\n\n")
-        fh.write("E7 note: pipeline timing uses the same simulated TEE and Python crypto assumptions as P1/P2.\n\n")
+        fh.write(
+            "E7 note: baseline timing is a deterministic simulation mapped to the reference roles: "
+            "cloud-only stores n raw values, fog plaintext stores one insecure sum, the Paillier fog-convert baseline stores n ciphertexts, "
+            "and the proposed method stores one Paillier aggregate. The proposed method is not claimed to reduce Paillier computation time; "
+            "its E7 claim is privacy-preserving n-to-1 storage reduction, with delegation overhead only in affected windows.\n\n"
+        )
         fh.write("## E8 Blast Radius\nE8 is analytical exposure accounting, not cryptographic attack simulation or SGX penetration testing.\n")

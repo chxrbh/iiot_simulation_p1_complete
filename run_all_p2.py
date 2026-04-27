@@ -8,7 +8,7 @@ import random
 import sys
 import time
 
-from config import DEFAULT_KEY_BITS, DEFAULT_SEED, E4_K_VALUES, E4_REPS, E6_FAILURE_SCENARIOS, E6_METHODS, RESULTS_DIR
+from config import DEFAULT_KEY_BITS, DEFAULT_SEED, E4_K_VALUES, E4_REPS, E6_FAILURE_SCENARIOS, E6_METHODS, E6_SEEDS, RESULTS_DIR
 from crypto_sim import generate_fog_keys, generate_paillier_keypair, paillier_backend_name
 from experiments_p2 import run_e3b, run_e4, run_e6
 from figures import generate_p2_all
@@ -73,20 +73,24 @@ def main() -> None:
     show_progress = not args.no_progress
     print(f"Running repaired P2 experiments with seed={seed}, key_bits={key_bits}, backend={backend}")
 
-    e3b_trials = 2 if args.quick else 100
-    e3b_progress = ProgressBar(e3b_trials, "E3b multi-source", enabled=show_progress)
-    e3b = run_e3b(pub_key, priv_key, k_fog, k_store, seed, trials=e3b_trials, progress=e3b_progress.step)
-    e3b_progress.finish()
-    write_csv(os.path.join(args.results_dir, "e3b_multisource_correctness.csv"), e3b)
+    # e3b_trials = 2 if args.quick else 100
+    # e3b_progress = ProgressBar(e3b_trials, "E3b multi-source", enabled=show_progress)
+    # e3b = run_e3b(pub_key, priv_key, k_fog, k_store, seed, trials=e3b_trials, progress=e3b_progress.step)
+    # e3b_progress.finish()
+    # write_csv(os.path.join(args.results_dir, "e3b_multisource_correctness.csv"), e3b)
 
-    e4_reps = 1 if args.quick else E4_REPS
-    e4_k_values = [2, 5] if args.quick else E4_K_VALUES
-    e4_progress = ProgressBar(len(e4_k_values) * e4_reps, "E4 KMM combine", enabled=show_progress)
-    e4 = run_e4(pub_key, seed, reps=e4_reps, k_values=e4_k_values, progress=e4_progress.step)
-    e4_progress.finish()
-    write_csv(os.path.join(args.results_dir, "e4_kmm_combine.csv"), e4)
+    # e4_reps = 1 if args.quick else E4_REPS
+    # e4_k_values = [2, 5] if args.quick else E4_K_VALUES
+    # e4_progress = ProgressBar(len(e4_k_values) * e4_reps, "E4 KMM combine", enabled=show_progress)
+    # e4 = run_e4(pub_key, seed, reps=e4_reps, k_values=e4_k_values, progress=e4_progress.step)
+    # e4_progress.finish()
+    # write_csv(os.path.join(args.results_dir, "e4_kmm_combine.csv"), e4)
 
-    e6_progress = ProgressBar(len(E6_FAILURE_SCENARIOS) * len(E6_METHODS), "E6 fault model", enabled=show_progress)
+    e6_progress = ProgressBar(
+        len(E6_FAILURE_SCENARIOS) * len(E6_SEEDS) * len(E6_METHODS),
+        "E6 fault model",
+        enabled=show_progress,
+    )
     e6 = run_e6(progress=e6_progress.step)
     e6_progress.finish()
     write_csv(os.path.join(args.results_dir, "e6_fault_detection.csv"), e6)

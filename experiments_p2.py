@@ -16,11 +16,16 @@ from config import (
     E3B_TRIALS,
     E4_K_VALUES,
     E4_REPS,
-    E6_ACK_KEY_BYTES,
     E6_CHECKPOINT_INTERVAL_MS,
+    E6_CHECKPOINT_RESTORE_MS,
+    E6_CLUSTER_DETECT_MS,
+    E6_CLUSTER_REROUTE_MS,
+    E6_CLUSTER_SELECTION_MS,
     E6_FAILURE_SCENARIOS,
     E6_GOSSIP_DETECT_MS,
     E6_METHODS,
+    E6_MULTILAYER_DETECTION_MS,
+    E6_SEEDS,
     FOG_NODES,
     KMM_PROV_MS,
     SCALE,
@@ -166,61 +171,163 @@ def run_e4(
     return rows
 
 
-def _e6_method_metrics(method: str, failure_time_ms: float) -> dict[str, object]:
-    remaining_ms = max(0.0, WINDOW_MS - failure_time_ms)
+def _e6_reading_times(seed: int, observation_ms: float) -> list[float]:
+    rng = random.Random(seed + 6000)
     total_sensors = sum(node["sensors"] for node in FOG_NODES.values())
-    if method == "none":
-        data_loss_ms = remaining_ms
+    windows = int(observation_ms // WINDOW_MS)
+    return [
+        window * WINDOW_MS + rng.uniform(0.0, WINDOW_MS)
+        for window in range(windows)
+        for _ in range(total_sensors)
+    ]
+
+
+def _e6_count_lost(reading_times: list[float], lost_start_ms: float, lost_end_ms: float) -> int:
+    return sum(lost_start_ms <= timestamp < lost_end_ms for timestamp in reading_times)
+
+
+def _e6_count_at_or_after(reading_times: list[float], start_ms: float) -> int:
+    return sum(timestamp >= start_ms for timestamp in reading_times)
+
+
+E6_BASELINE_METADATA = {
+    "b1_gossip": {
+        "baseline_id": "B1",
+        "baseline_name": "Gossip-based Failure Detection",
+        "baseline_model": "failure detected after missing r consecutive gossip updates, modeled as r*Tg",
+    },
+    "b2_replication": {
+        "baseline_id": "B2",
+        "baseline_name": "Replication-Based Fault Tolerance",
+        "baseline_model": "each reading is sent to both primary and backup fog nodes; backup result is used after primary failure",
+    },
+    "checkpoint": {
+        "baseline_id": "B3",
+        "baseline_name": "Checkpoint-Based Recovery",
+        "baseline_model": "periodic checkpoint/restart; state after latest checkpoint and before restore completion may be lost",
+    },
+    "b4_multilayer": {
+        "baseline_id": "B4",
+        "baseline_name": "Multilayer Fault Detection",
+        "baseline_model": "failure can be detected by infrastructure-level and application-level monitoring layers",
+    },
+    "b5_fog_clustering": {
+        "baseline_id": "B5",
+        "baseline_name": "Fog-Clustering Fault Tolerance",
+        "baseline_model": "cluster coordinator detects primary fog failure, selects a replacement fog, and reroutes readings",
+    },
+    "proposed_ack_kmm": {
+        "baseline_id": "Proposed",
+        "baseline_name": "ACK+KMM Fault Recovery",
+        "baseline_model": "sensor ACK timeout followed by KMM key provisioning and retransmission to backup fog",
+    },
+}
+
+
+def _e6_method_metrics(method: str, failure_time_ms: float, seed: int) -> dict[str, object]:
+    observation_ms = WINDOW_MS + max(
+        E6_GOSSIP_DETECT_MS,
+        E6_CHECKPOINT_RESTORE_MS,
+        E6_MULTILAYER_DETECTION_MS,
+        E6_CLUSTER_DETECT_MS + E6_CLUSTER_SELECTION_MS + E6_CLUSTER_REROUTE_MS,
+        T_ACK_MS + KMM_PROV_MS,
+    )
+    reading_times = _e6_reading_times(seed, observation_ms)
+    total_readings = len(reading_times)
+    observation_windows = int(observation_ms // WINDOW_MS)
+    baseline_message_units = float(total_readings)
+    baseline_compute_ops = float(total_readings)
+    lost_start_ms = failure_time_ms
+    lost_end_ms = failure_time_ms
+    control_messages = 0.0
+    kmm_provision_messages = 0.0
+    checkpoint_writes = 0.0
+    restored_readings = 0.0
+    backup_rerouted_readings = 0.0
+    if method == "b1_gossip":
+        lost_end_ms = failure_time_ms + E6_GOSSIP_DETECT_MS
         recovery_latency_ms = E6_GOSSIP_DETECT_MS
-        storage_overhead_factor = 1.0
-        storage_overhead_bytes = 0
-        limitation = "all readings after failure are lost until manual/gossip recovery"
-    elif method == "replication":
-        data_loss_ms = 0.0
+        control_messages = 3.0 * len(FOG_NODES)
+        message_units = baseline_message_units + control_messages
+        compute_ops = baseline_compute_ops
+    elif method == "b2_replication":
         recovery_latency_ms = 0.0
-        storage_overhead_factor = 2.0
-        storage_overhead_bytes = total_sensors * 44
-        limitation = "models hot replication with 2x reading storage overhead"
+        message_units = baseline_message_units * 2.0
+        compute_ops = baseline_compute_ops * 2.0
     elif method == "checkpoint":
-        data_loss_ms = min(remaining_ms, E6_CHECKPOINT_INTERVAL_MS)
-        recovery_latency_ms = 500.0
-        storage_overhead_factor = 1.25
-        storage_overhead_bytes = total_sensors * 8
-        limitation = "bounded by checkpoint interval; not instant recovery"
-    elif method == "ack_kmm":
-        data_loss_ms = min(remaining_ms, T_ACK_MS + KMM_PROV_MS)
+        last_checkpoint = (failure_time_ms // E6_CHECKPOINT_INTERVAL_MS) * E6_CHECKPOINT_INTERVAL_MS
+        lost_start_ms = last_checkpoint
+        lost_end_ms = failure_time_ms
+        recovery_latency_ms = E6_CHECKPOINT_RESTORE_MS
+        checkpoint_writes = float(observation_windows * len(FOG_NODES))
+    elif method == "b4_multilayer":
+        lost_end_ms = failure_time_ms + E6_MULTILAYER_DETECTION_MS
+        recovery_latency_ms = E6_MULTILAYER_DETECTION_MS
+        control_messages = float(observation_windows * len(FOG_NODES) * 2)
+        message_units = baseline_message_units + control_messages
+        compute_ops = baseline_compute_ops + control_messages
+    elif method == "b5_fog_clustering":
+        recovery_latency_ms = E6_CLUSTER_DETECT_MS + E6_CLUSTER_SELECTION_MS + E6_CLUSTER_REROUTE_MS
+        lost_end_ms = failure_time_ms + recovery_latency_ms
+        control_messages = float(observation_windows * len(FOG_NODES) + 3)
+        backup_rerouted_readings = float(_e6_count_at_or_after(reading_times, lost_end_ms))
+        message_units = baseline_message_units + control_messages
+        compute_ops = baseline_compute_ops + control_messages + 1.0
+    elif method == "proposed_ack_kmm":
+        lost_end_ms = failure_time_ms + T_ACK_MS + KMM_PROV_MS
         recovery_latency_ms = T_ACK_MS + KMM_PROV_MS
-        storage_overhead_factor = 1.0
-        storage_overhead_bytes = len(FOG_NODES) * E6_ACK_KEY_BYTES
-        limitation = "deterministic timing model; readings during ACK and key provisioning are lost"
+        control_messages = float(total_readings)
+        kmm_provision_messages = 2.0
+        backup_rerouted_readings = float(_e6_count_at_or_after(reading_times, lost_end_ms))
+        message_units = baseline_message_units + control_messages * 0.05 + kmm_provision_messages
+        compute_ops = baseline_compute_ops + kmm_provision_messages
     else:
         raise ValueError(f"Unknown E6 method: {method}")
-    completion_pct = (WINDOW_MS - data_loss_ms) / WINDOW_MS * 100.0
+    lost_readings = _e6_count_lost(reading_times, lost_start_ms, lost_end_ms)
+    recovered_readings = total_readings - lost_readings
+    if method == "checkpoint":
+        restored_readings = float(lost_readings)
+        message_units = baseline_message_units + checkpoint_writes
+        compute_ops = baseline_compute_ops + checkpoint_writes + restored_readings
+    data_loss_rate = lost_readings / total_readings
     return {
-        "data_loss_ms": data_loss_ms,
-        "completion_pct": completion_pct,
-        "storage_overhead_factor": storage_overhead_factor,
-        "storage_overhead_bytes": storage_overhead_bytes,
+        "total_readings": total_readings,
+        "recovered_readings": recovered_readings,
+        "lost_readings": lost_readings,
+        "data_loss_rate": data_loss_rate,
+        "window_completeness": recovered_readings / total_readings,
         "recovery_latency_ms": recovery_latency_ms,
-        "limitation": limitation,
+        "baseline_message_units": baseline_message_units,
+        "measured_message_units": message_units,
+        "control_messages": control_messages,
+        "kmm_provision_messages": kmm_provision_messages,
+        "checkpoint_writes": checkpoint_writes,
+        "backup_rerouted_readings": backup_rerouted_readings,
+        "baseline_compute_ops": baseline_compute_ops,
+        "measured_compute_ops": compute_ops,
+        "restored_readings": restored_readings,
+        "message_overhead": message_units / baseline_message_units,
+        "compute_overhead": compute_ops / baseline_compute_ops,
     }
 
 
 def run_e6(progress: Callable[[str], None] | None = None) -> list[dict[str, object]]:
     rows = []
     for scenario, failure_time_ms in E6_FAILURE_SCENARIOS.items():
-        for method in E6_METHODS:
-            if progress:
-                progress(f"E6 scenario={scenario} method={method}")
-            metrics = _e6_method_metrics(method, failure_time_ms)
-            rows.append(
-                {
-                    "scenario": scenario,
-                    "failure_time_ms": failure_time_ms,
-                    "method": method,
-                    "window_ms": WINDOW_MS,
-                    **metrics,
-                    "model_note": "analytical timing model; not live distributed fault injection",
-                }
-            )
+        for seed in E6_SEEDS:
+            for method in E6_METHODS:
+                if progress:
+                    progress(f"E6 scenario={scenario} seed={seed} method={method}")
+                metrics = _e6_method_metrics(method, failure_time_ms, seed)
+                metadata = E6_BASELINE_METADATA[method]
+                rows.append(
+                    {
+                        "method": method,
+                        **metadata,
+                        "scenario": scenario,
+                        "fail_time_ms": int(failure_time_ms),
+                        "seed": seed,
+                        **metrics,
+                    }
+                )
     return rows

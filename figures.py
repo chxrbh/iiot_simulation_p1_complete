@@ -28,6 +28,10 @@ METHOD_LABELS = {
     "round_robin": "Round-Robin",
     "threshold": "Threshold only",
     "capacity": "CapacityScore (ours)",
+    "cloud_only": "Cloud-only",
+    "fog_plaintext": "Fog plaintext",
+    "paillier_fog_convert": "Paillier\nfog convert",
+    "ours": "Proposed",
 }
 
 METHOD_COLORS = {
@@ -35,6 +39,24 @@ METHOD_COLORS = {
     "round_robin": C["rr"],
     "threshold": C["thresh"],
     "capacity": C["yours"],
+}
+
+E6_METHOD_LABELS = {
+    "b1_gossip": "Gossip-only",
+    "b2_replication": "Replication",
+    "checkpoint": "Checkpoint",
+    "b4_multilayer": "Multilayer",
+    "b5_fog_clustering": "Fog-clustering",
+    "proposed_ack_kmm": "Proposed\nACK+KMM",
+}
+
+E6_METHOD_COLORS = {
+    "b1_gossip": C["plain"],
+    "b2_replication": C["paillier"],
+    "checkpoint": C["thresh"],
+    "b4_multilayer": C["aes"],
+    "b5_fog_clustering": C["rr"],
+    "proposed_ack_kmm": C["yours"],
 }
 
 
@@ -308,16 +330,24 @@ def plot_e6(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     rows = read_csv(os.path.join(results_dir, "e6_fault_detection.csv"))
     scenarios = list(dict.fromkeys(row["scenario"] for row in rows))
     methods = list(dict.fromkeys(row["method"] for row in rows))
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+    fig, axes = plt.subplots(1, 3, figsize=(17, 4.5))
     x = np.arange(len(scenarios))
-    width = 0.18
-    colors = [C["plain"], C["paillier"], C["aes"], C["yours"]]
+    width = min(0.8 / max(1, len(methods)), 0.18)
     for idx, method in enumerate(methods):
-        method_rows = [row for row in rows if row["method"] == method]
-        axes[0].bar(x + (idx - 1.5) * width, [_float(row, "data_loss_ms") for row in method_rows], width, label=method, color=colors[idx])
-        axes[1].bar(x + (idx - 1.5) * width, [_float(row, "recovery_latency_ms") for row in method_rows], width, label=method, color=colors[idx])
+        loss_means = []
+        latency_means = []
+        for scenario in scenarios:
+            method_rows = [row for row in rows if row["method"] == method and row["scenario"] == scenario]
+            loss_means.append(np.mean([_float(row, "data_loss_rate") * 100.0 for row in method_rows]))
+            latency_means.append(np.mean([_float(row, "recovery_latency_ms") for row in method_rows]))
+        offset = (idx - (len(methods) - 1) / 2) * width
+        label_row = next(row for row in rows if row["method"] == method)
+        label = f"{label_row['baseline_id']} {label_row['baseline_name']}"
+        color = E6_METHOD_COLORS.get(method, C["plain"])
+        axes[0].bar(x + offset, loss_means, width, label=label, color=color)
+        axes[1].bar(x + offset, latency_means, width, label=label, color=color)
     for ax, ylabel, title in [
-        (axes[0], "Data loss window (ms)", "E6a - Data loss by method"),
+        (axes[0], "Mean data loss rate (%)", "E6a - Data loss by method"),
         (axes[1], "Recovery latency (ms)", "E6b - Recovery latency by method"),
     ]:
         ax.set_xticks(x)
@@ -325,8 +355,90 @@ def plot_e6(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
         ax.set_ylabel(ylabel)
         ax.set_title(title)
         ax.legend(fontsize=8)
+
+    overhead_x = np.arange(len(methods))
+    overhead_width = 0.36
+    message_overhead = [
+        np.mean([_float(row, "message_overhead") for row in rows if row["method"] == method])
+        for method in methods
+    ]
+    compute_overhead = [
+        np.mean([_float(row, "compute_overhead") for row in rows if row["method"] == method])
+        for method in methods
+    ]
+    axes[2].bar(overhead_x - overhead_width / 2, message_overhead, overhead_width, label="Message", color=C["aes"])
+    axes[2].bar(overhead_x + overhead_width / 2, compute_overhead, overhead_width, label="Compute", color=C["paillier"])
+    axes[2].axhline(1.0, color="black", linestyle="--", lw=1, alpha=0.5)
+    axes[2].set_xticks(overhead_x)
+    axes[2].set_xticklabels(methods, rotation=15, ha="right")
+    axes[2].set_ylabel("Mean overhead factor vs baseline")
+    axes[2].set_title("E6c - Measured overhead by method")
+    axes[2].legend(fontsize=8)
     plt.tight_layout()
     _finish_figure(results_dir, "e6_fault_detection", show)
+
+
+def plot_e6_tradeoff(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    rows = read_csv(os.path.join(results_dir, "e6_fault_detection.csv"))
+    methods = list(dict.fromkeys(row["method"] for row in rows))
+    fig, ax = plt.subplots(figsize=(8.2, 5.6))
+
+    for method in methods:
+        method_rows = [row for row in rows if row["method"] == method]
+        mean_loss_pct = np.mean([_float(row, "data_loss_rate") * 100.0 for row in method_rows])
+        mean_message_overhead = np.mean([_float(row, "message_overhead") for row in method_rows])
+        mean_latency = np.mean([_float(row, "recovery_latency_ms") for row in method_rows])
+        marker_size = 90.0 + mean_latency * 0.22
+        is_proposed = method == "proposed_ack_kmm"
+        ax.scatter(
+            mean_message_overhead,
+            mean_loss_pct,
+            s=marker_size,
+            color=E6_METHOD_COLORS.get(method, C["plain"]),
+            edgecolor="black" if is_proposed else "white",
+            linewidth=1.4 if is_proposed else 0.8,
+            alpha=0.92,
+            zorder=3 if is_proposed else 2,
+        )
+        label = E6_METHOD_LABELS.get(method, method)
+        label_offsets = {
+            "b1_gossip": (6, -15, "left"),
+            "b2_replication": (-8, 12, "right"),
+            "checkpoint": (8, 10, "left"),
+            "b4_multilayer": (8, 2, "left"),
+            "b5_fog_clustering": (8, 4, "left"),
+            "proposed_ack_kmm": (8, -14, "left"),
+        }
+        x_offset, y_offset, h_align = label_offsets.get(method, (8, 4, "left"))
+        ax.annotate(
+            label,
+            (mean_message_overhead, mean_loss_pct),
+            xytext=(x_offset, y_offset),
+            textcoords="offset points",
+            fontsize=9,
+            weight="bold" if is_proposed else "normal",
+            ha=h_align,
+            va="center",
+        )
+
+    ax.axvline(1.0, color="black", linestyle="--", lw=1, alpha=0.45)
+    ax.set_xlabel("Mean message overhead factor")
+    ax.set_ylabel("Mean data loss rate (%)")
+    ax.set_title("E6 - Fault-recovery loss/overhead trade-off")
+    ax.grid(True, alpha=0.25)
+    ax.set_xlim(0.98, 2.08)
+    ax.set_ylim(0.0, 82.0)
+    ax.text(
+        2.05,
+        77.5,
+        "Bubble area scales with recovery latency",
+        fontsize=8,
+        color="#555555",
+        ha="right",
+        va="top",
+    )
+    plt.tight_layout()
+    _finish_figure(results_dir, "e6_fault_tradeoff", show)
 
 
 def generate_all(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
@@ -340,17 +452,19 @@ def generate_p2_all(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     plot_e3b(results_dir, show=show)
     plot_e4(results_dir, show=show)
     plot_e6(results_dir, show=show)
+    plot_e6_tradeoff(results_dir, show=show)
 
 
 def plot_e7(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     rows = read_csv(os.path.join(results_dir, "e7_pipeline_latency_summary.csv"))
     methods = [row["method"] for row in rows]
+    labels = [METHOD_LABELS.get(method, method) for method in methods]
     totals = [_float(row, "total_ms_median") for row in rows]
-    storage = [_float(row, "storage_bytes_per_window_median") for row in rows]
+    storage = [_float(row, "storage_items_per_window_median") for row in rows]
     fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
 
     ax = axes[0]
-    bars = ax.bar(methods, totals, color=[C["plain"], C["aes"], C["paillier"], C["yours"]], edgecolor="white")
+    bars = ax.bar(labels, totals, color=[C["plain"], C["aes"], C["paillier"], C["yours"]], edgecolor="white")
     ax.axhline(WINDOW_MS, color="red", linestyle="--", lw=1, alpha=0.7, label="500 ms window")
     for bar, value in zip(bars, totals):
         ax.text(bar.get_x() + bar.get_width() / 2, value, f"{value:.1f}", ha="center", va="bottom", fontsize=8)
@@ -360,10 +474,10 @@ def plot_e7(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     ax.legend(fontsize=8)
 
     ax2 = axes[1]
-    ax2.bar(methods, storage, color=[C["plain"], C["aes"], C["paillier"], C["yours"]], edgecolor="white")
+    ax2.bar(labels, storage, color=[C["plain"], C["aes"], C["paillier"], C["yours"]], edgecolor="white")
     ax2.set_yscale("log")
-    ax2.set_ylabel("Median storage/window (bytes, log scale)")
-    ax2.set_title("E7b - Storage per window")
+    ax2.set_ylabel("Median storage/window (items, log scale)")
+    ax2.set_title("E7b - Stored values or ciphertexts per window")
     ax2.tick_params(axis="x", labelrotation=12)
     plt.tight_layout()
     _finish_figure(results_dir, "e7_pipeline_latency", show)

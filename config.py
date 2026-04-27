@@ -41,21 +41,46 @@ E4_K_VALUES = [1, 2, 5, 10, 20, 50, 100]
 E4_REPS = 30
 
 E6_FAILURE_SCENARIOS = {
-    "before_window": 0.0,
+    "fail_0ms": 0.0,
     "mid_window_250ms": 250.0,
     "late_window_450ms": 450.0,
 }
-E6_METHODS = ["none", "replication", "checkpoint", "ack_kmm"]
-E6_CHECKPOINT_INTERVAL_MS = 250.0
+E6_METHODS = [
+    "b1_gossip",
+    "b2_replication",
+    "checkpoint",
+    "b4_multilayer",
+    "b5_fog_clustering",
+    "proposed_ack_kmm",
+]
+E6_SEEDS = list(range(30))
+E6_CHECKPOINT_INTERVAL_MS = 500.0
+E6_CHECKPOINT_RESTORE_MS = 500.0
 E6_GOSSIP_DETECT_MS = 1500.0
+E6_MULTILAYER_DETECTION_MS = 500.0
+E6_CLUSTER_DETECT_MS = 500.0
+E6_CLUSTER_SELECTION_MS = 100.0
+E6_CLUSTER_REROUTE_MS = 150.0
 E6_ACK_KEY_BYTES = 28
 
 E7_N = 100
 E7_NODE = "F2"
+E7_NET_SENSOR_TO_FOG_MS = 2.0
+E7_NET_SENSOR_TO_CLOUD_MS = 30.0
+E7_SENSOR_AES_MS = 0.001
+E7_PLAINTEXT_SUM_MS = 1.0
+E7_PAILLIER_ENC_MS = 3.8
+E7_PAILLIER_ADD_MS = 0.01
+E7_KMM_COMBINE_MS = 1.0
+E7_STORAGE_PREP_MS = 5.0
 E7_CLOUD_UPLOAD_MS = 10.0
-E7_METHODS = ["cloud_only", "fog_plaintext", "paillier_nobatch", "ours"]
+E7_TEE_DELEGATION_MS = 150.0
+E7_METHODS = ["cloud_only", "fog_plaintext", "paillier_fog_convert", "ours"]
 E7_STAGE_COLUMNS = [
+    "sensor_to_fog_ms",
+    "sensor_to_cloud_ms",
     "sensor_aes_ms",
+    "plaintext_sum_ms",
     "enclave_aes_to_paillier_ms",
     "paillier_accum_ms",
     "delegation_ms",

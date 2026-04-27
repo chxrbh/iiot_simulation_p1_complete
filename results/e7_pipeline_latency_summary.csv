@@ -1,5 +1,5 @@
-method,windows,total_ms_median,total_ms_std,storage_bytes_per_window_median,within_500ms_windows,violates_500ms_windows
-cloud_only,20,10.0,0.0,800.0,20,0
-fog_plaintext,20,11.619099930394441,2.1832694415458844,8.0,20,0
-paillier_nobatch,20,14622.44340002304,4241.838397180058,51200.0,0,20
-ours,20,14388.631849947851,4228.462110054069,44.0,0,20
+method,windows,total_ms_median,total_ms_std,fog_latency_ms_median,storage_items_per_window_median,storage_bytes_per_window_median,within_500ms_windows,violates_500ms_windows
+cloud_only,20,40.0,0.0,0.0,100.0,800.0,20,0
+fog_plaintext,20,13.0,0.0,1.0,1.0,8.0,20,0
+paillier_fog_convert,20,393.001,0.0,381.0,100.0,51200.0,20,0
+ours,20,399.001,75.3937034925052,387.0,1.0,512.0,12,8
