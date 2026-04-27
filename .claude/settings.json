@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash([ -f \"c:/Users/acer/Downloads/iiot_simulation_p1_complete/$f\" ])",
+      "Bash(python -c \"from config import E5_WINDOWS, E5_TASKS_PER_WINDOW, E5_TO_RATIO, TAU, SEEDS; print\\('windows:', E5_WINDOWS, 'tasks_per_window:', E5_TASKS_PER_WINDOW, 'to_ratio:', E5_TO_RATIO, 'tau:', TAU, 'seeds:', len\\(SEEDS\\)\\)\")",
+      "Bash(grep -n \"\\\\\\\\\\\\\\\\section\\\\|\\\\\\\\\\\\\\\\subsection\\\\|\\\\\\\\\\\\\\\\subsubsection\" \"/c/Users/acer/Downloads/iiot_simulation_p1_complete/main.tex\")"
+    ]
+  }
+}
