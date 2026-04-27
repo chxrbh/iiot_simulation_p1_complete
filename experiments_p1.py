@@ -1,0 +1,385 @@
+"""Experiment runners for the repaired P1 package."""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from math import sqrt
+import random
+import statistics
+import time
+from collections.abc import Callable
+
+from config import (
+    BASE_WORKLOAD,
+    E1_N_VALUES,
+    E2_N_VALUES,
+    E2_REPS,
+    E3_K_VALUES,
+    E3_N,
+    E3_TRIALS,
+    E5_TASKS_PER_WINDOW,
+    E5_TO_RATIO,
+    FOG_NODES,
+    SCALE,
+    SEEDS,
+    TAU,
+    WINDOW_MS,
+    build_schedule,
+    capacity_score,
+)
+from crypto_sim import (
+    KMM,
+    PaillierPrivateKey,
+    PaillierPublicKey,
+    aes_decrypt,
+    aes_encrypt,
+    generate_fog_keys,
+    paillier_ciphertext_bytes,
+    sgx_enclave_process,
+    sgx_enclave_storage_prep,
+)
+
+
+def run_e1(pub_key: PaillierPublicKey) -> list[dict[str, object]]:
+    paillier_bytes = paillier_ciphertext_bytes(pub_key)
+    aes_bytes_per_reading = 12 + 16 + 16
+    plaintext_bytes_per_reading = 8
+    rows = []
+    for n in E1_N_VALUES:
+        aes_bytes = n * aes_bytes_per_reading
+        pnb_bytes = n * paillier_bytes
+        ours_bytes_paillier = paillier_bytes
+        ours_bytes_cloud = aes_bytes_per_reading
+        rows.append(
+            {
+                "n": n,
+                "plaintext_values": n,
+                "plaintext_bytes": n * plaintext_bytes_per_reading,
+                "aes_ciphertexts": n,
+                "aes_bytes": aes_bytes,
+                "paillier_nobatch_ciphertexts": n,
+                "paillier_nobatch_bytes": pnb_bytes,
+                "ours_ciphertexts": 1,
+                "ours_paillier_bytes": ours_bytes_paillier,
+                "ours_cloud_aes_bytes": ours_bytes_cloud,
+                "ciphertext_count_reduction": n,
+                "byte_reduction_vs_aes": aes_bytes / ours_bytes_cloud,
+                "byte_reduction_vs_paillier_nobatch": pnb_bytes / ours_bytes_paillier,
+            }
+        )
+    return rows
+
+
+def _readings(n: int, rng: random.Random) -> list[float]:
+    return [round(rng.uniform(0, 150), 4) for _ in range(n)]
+
+
+def _stats(values: list[float]) -> tuple[float, float]:
+    return statistics.median(values), statistics.stdev(values) if len(values) > 1 else 0.0
+
+
+def _time_plaintext(readings: list[float]) -> float:
+    t0 = time.perf_counter()
+    _ = sum(readings)
+    return (time.perf_counter() - t0) * 1000.0
+
+
+def _time_aes(readings: list[float], key: bytes, rng: random.Random) -> float:
+    t0 = time.perf_counter()
+    pairs = [aes_encrypt(key, value, rng) for value in readings]
+    _ = sum(aes_decrypt(key, nonce, ct) for nonce, ct in pairs)
+    return (time.perf_counter() - t0) * 1000.0
+
+
+def _time_paillier_nobatch(
+    readings: list[float],
+    key: bytes,
+    pub_key: PaillierPublicKey,
+    priv_key: PaillierPrivateKey,
+    rng: random.Random,
+) -> float:
+    t0 = time.perf_counter()
+    pairs = [aes_encrypt(key, value, rng) for value in readings]
+    ciphertexts = [sgx_enclave_process(key, nonce, ct, pub_key, rng) for nonce, ct in pairs]
+    cloud_aggregate = pub_key.encrypt(0, rng)
+    for ciphertext in ciphertexts:
+        cloud_aggregate = cloud_aggregate + ciphertext
+    _ = priv_key.decrypt(cloud_aggregate) / SCALE
+    return (time.perf_counter() - t0) * 1000.0
+
+
+def _time_ours(
+    readings: list[float],
+    key: bytes,
+    store_key: bytes,
+    pub_key: PaillierPublicKey,
+    priv_key: PaillierPrivateKey,
+    rng: random.Random,
+) -> tuple[float, float, float, float]:
+    kmm = KMM({"F1": key})
+    t0 = time.perf_counter()
+    agg = pub_key.encrypt(0, rng)
+    t_enc0 = time.perf_counter()
+    for value in readings:
+        nonce, ct = aes_encrypt(key, value, rng)
+        agg = agg + sgx_enclave_process(key, nonce, ct, pub_key, rng)
+    enc_ms = (time.perf_counter() - t_enc0) * 1000.0
+    combined, kmm_ms = kmm.combine({"F1": agg}, pub_key)
+    t_store0 = time.perf_counter()
+    _ = sgx_enclave_storage_prep(combined, priv_key, store_key, rng)
+    storage_ms = (time.perf_counter() - t_store0) * 1000.0
+    total_ms = (time.perf_counter() - t0) * 1000.0
+    return total_ms, enc_ms, kmm_ms, storage_ms
+
+
+def run_e2(
+    pub_key: PaillierPublicKey,
+    priv_key: PaillierPrivateKey,
+    k_fog: dict[str, bytes],
+    k_store: bytes,
+    seed: int,
+    reps: int = E2_REPS,
+    n_values: list[int] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> list[dict[str, object]]:
+    rng = random.Random(seed + 2000)
+    n_values = n_values or E2_N_VALUES
+    rows = []
+    for n in n_values:
+        timings = defaultdict(list)
+        for rep in range(reps):
+            if progress:
+                progress(f"E2 n={n} rep={rep + 1}/{reps}")
+            readings = _readings(n, rng)
+            timings["plaintext_ms"].append(_time_plaintext(readings))
+            timings["aes_ms"].append(_time_aes(readings, k_fog["F1"], rng))
+            timings["paillier_nobatch_ms"].append(
+                _time_paillier_nobatch(readings, k_fog["F1"], pub_key, priv_key, rng)
+            )
+            total, enc, kmm, storage = _time_ours(readings, k_fog["F1"], k_store, pub_key, priv_key, rng)
+            timings["ours_ms"].append(total)
+            timings["ours_enclave_ms"].append(enc)
+            timings["ours_kmm_ms"].append(kmm)
+            timings["ours_storage_ms"].append(storage)
+        row: dict[str, object] = {"n": n, "window_ms": WINDOW_MS}
+        for name, values in timings.items():
+            med, std = _stats(values)
+            row[f"{name}_median"] = med
+            row[f"{name}_std"] = std
+        row["ours_within_500ms"] = row["ours_ms_median"] <= WINDOW_MS
+        row["conclusion"] = (
+            "violates_500ms_window" if row["ours_ms_median"] > WINDOW_MS else "within_500ms_window"
+        )
+        rows.append(row)
+    return rows
+
+
+def run_e3a(
+    pub_key: PaillierPublicKey,
+    priv_key: PaillierPrivateKey,
+    k_fog: dict[str, bytes],
+    k_store: bytes,
+    seed: int,
+    trials: int = E3_TRIALS,
+    n: int = E3_N,
+    k_values: list[int] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> list[dict[str, object]]:
+    rng = random.Random(seed + 3000)
+    k_values = k_values or E3_K_VALUES
+    rows = []
+    for k in k_values:
+        correct_scaled = 0
+        quant_errors = []
+        trial_times = []
+        max_scaled_error = 0.0
+        for trial in range(trials):
+            if progress:
+                progress(f"E3a k={k} trial={trial + 1}/{trials}")
+            t0 = time.perf_counter()
+            readings = _readings(n, rng)
+            true_float_sum = sum(readings)
+            true_scaled_sum = sum(int(value * SCALE) for value in readings) / SCALE
+            delegated = set(rng.sample(range(n), k))
+            kmm = KMM(k_fog)
+            delegated_key, _ = kmm.provision_key("F1", "F4")
+            agg_a = pub_key.encrypt(0, rng)
+            agg_b = pub_key.encrypt(0, rng)
+            for i, value in enumerate(readings):
+                nonce, ct = aes_encrypt(k_fog["F1"], value, rng)
+                if i in delegated:
+                    agg_a = agg_a + pub_key.encrypt(0, rng)
+                    agg_b = agg_b + sgx_enclave_process(delegated_key, nonce, ct, pub_key, rng)
+                else:
+                    agg_a = agg_a + sgx_enclave_process(k_fog["F1"], nonce, ct, pub_key, rng)
+            final, _ = kmm.combine({"F1": agg_a, "F4": agg_b}, pub_key)
+            _, _, decoded = sgx_enclave_storage_prep(final, priv_key, k_store, rng)
+            kmm.revoke_key("F1", "F4")
+            scaled_error = abs(decoded - true_scaled_sum)
+            float_error = abs(decoded - true_float_sum)
+            max_scaled_error = max(max_scaled_error, scaled_error)
+            quant_errors.append(float_error)
+            correct_scaled += int(scaled_error < 1e-9)
+            trial_times.append((time.perf_counter() - t0) * 1000.0)
+        rows.append(
+            {
+                "n": n,
+                "k_delegated": k,
+                "trials": trials,
+                "correct_scaled": correct_scaled,
+                "accuracy_scaled_pct": correct_scaled / trials * 100.0,
+                "median_quantization_error": statistics.median(quant_errors),
+                "max_quantization_error": max(quant_errors),
+                "max_scaled_error": max_scaled_error,
+                "median_trial_ms": statistics.median(trial_times),
+                "zero_fill_security_note": (
+                    "randomized Paillier zero-fill; indistinguishability argued cryptographically, "
+                    "not experimentally tested"
+                ),
+            }
+        )
+    return rows
+
+
+class RoundRobin:
+    def __init__(self) -> None:
+        self.index = 0
+
+    def pick(self, candidates: list[str], task_type: str, wt: dict[str, dict[str, float]], rng: random.Random) -> str | None:
+        if not candidates:
+            return None
+        choice = candidates[self.index % len(candidates)]
+        self.index += 1
+        return choice
+
+
+def _pick(method: str, candidates: list[str], task_type: str, wt: dict[str, dict[str, float]], rng: random.Random, rr: RoundRobin) -> str | None:
+    if not candidates:
+        return None
+    if method == "random":
+        return rng.choice(candidates)
+    if method == "round_robin":
+        return rr.pick(candidates, task_type, wt, rng)
+    if method == "threshold":
+        if task_type == "LS":
+            return min(candidates, key=lambda nid: (wt[nid]["latency"], wt[nid]["queue"], wt[nid]["workload"]))
+        return min(candidates, key=lambda nid: (wt[nid]["workload"], wt[nid]["queue"], wt[nid]["latency"]))
+    if method == "capacity":
+        return max(candidates, key=lambda nid: capacity_score(nid, wt, task_type))
+    raise ValueError(f"Unknown E5 method: {method}")
+
+
+def _service_time(node_id: str, task_type: str, wt: dict[str, dict[str, float]]) -> float:
+    node = FOG_NODES[node_id]
+    base = 28.0 if task_type == "LS" else 90.0
+    cpu_penalty = 4.0 / node["cpu_cap"]
+    latency_penalty = wt[node_id]["latency"] * 60.0
+    queue_penalty = wt[node_id]["queue"] * (70.0 if task_type == "LS" else 120.0)
+    return base * cpu_penalty + latency_penalty + queue_penalty
+
+
+def _run_e5_once(method: str, seed: int) -> dict[str, object]:
+    rng = random.Random(seed)
+    current = {nid: dict(values) for nid, values in BASE_WORKLOAD.items()}
+    rr = RoundRobin()
+    schedule = build_schedule()
+    total_tasks = completed = deadline_met = redelegated = 0
+    ls_total = ls_correct = to_total = to_correct = 0
+    stdevs = []
+    assignments = defaultdict(int)
+    for window in schedule:
+        current["F2"]["workload"] = float(window["f2_load"])
+        current["F2"]["queue"] = float(window["f2_load"]) * 0.8
+        current["F5"]["workload"] = 1.0 if not window["f5_alive"] else 0.45
+        current["F5"]["queue"] = 1.0 if not window["f5_alive"] else 0.40
+        for nid in ["F1", "F3", "F4", "F5"]:
+            current[nid]["workload"] = max(current[nid]["workload"] * 0.82, BASE_WORKLOAD[nid]["workload"])
+            current[nid]["queue"] = max(current[nid]["queue"] * 0.82, BASE_WORKLOAD[nid]["queue"])
+        overloaded = {nid for nid, values in current.items() if values["workload"] >= TAU}
+        wt_snapshot = {nid: dict(values) for nid, values in current.items()}
+        stdevs.append(statistics.pstdev(values["workload"] for values in wt_snapshot.values()))
+        for task_idx in range(E5_TASKS_PER_WINDOW):
+            task_type = "TO" if rng.random() < E5_TO_RATIO else "LS"
+            if task_type == "LS":
+                ls_total += 1
+            else:
+                to_total += 1
+            source = "F2" if current["F2"]["workload"] >= TAU else f"F{1 + (task_idx % 5)}"
+            if source not in overloaded:
+                target = source
+            else:
+                candidates = [
+                    nid
+                    for nid, values in current.items()
+                    if nid not in overloaded and values["workload"] < TAU
+                ]
+                target = _pick(method, candidates, task_type, current, rng, rr)
+            total_tasks += 1
+            if target is None:
+                redelegated += 1
+                continue
+            assignments[target] += 1
+            latency = _service_time(target, task_type, current)
+            deadline = 100.0 if task_type == "LS" else 1000.0
+            is_weak_overload = target == "F3" and current[target]["workload"] > 0.65
+            if is_weak_overload:
+                redelegated += 1
+            else:
+                completed += 1
+                deadline_met += int(latency <= deadline)
+            if task_type == "LS":
+                ls_correct += int(target == "F4")
+            else:
+                to_correct += int(target == "F1")
+            current[target]["workload"] = min(0.99, current[target]["workload"] + (0.006 if task_type == "LS" else 0.010))
+            current[target]["queue"] = min(0.99, current[target]["queue"] + (0.004 if task_type == "LS" else 0.007))
+    return {
+        "method": method,
+        "seed": seed,
+        "tasks": total_tasks,
+        "completion_pct": completed / total_tasks * 100.0,
+        "deadline_satisfaction_pct": deadline_met / total_tasks * 100.0,
+        "redelegation_rate_pct": redelegated / total_tasks * 100.0,
+        "ls_target_accuracy_pct": ls_correct / max(1, ls_total) * 100.0,
+        "to_target_accuracy_pct": to_correct / max(1, to_total) * 100.0,
+        "workload_stdev": statistics.mean(stdevs),
+        "assignment_f1": assignments["F1"],
+        "assignment_f3": assignments["F3"],
+        "assignment_f4": assignments["F4"],
+    }
+
+
+def run_e5(
+    seeds: list[int] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    seeds = seeds or SEEDS
+    methods = ["random", "round_robin", "threshold", "capacity"]
+    runs = []
+    for method in methods:
+        for seed in seeds:
+            if progress:
+                progress(f"E5 method={method} seed={seed}")
+            runs.append(_run_e5_once(method, seed))
+    aggregate = []
+    for method in methods:
+        method_runs = [row for row in runs if row["method"] == method]
+        row: dict[str, object] = {"method": method, "runs": len(method_runs)}
+        for metric in [
+            "completion_pct",
+            "deadline_satisfaction_pct",
+            "redelegation_rate_pct",
+            "ls_target_accuracy_pct",
+            "to_target_accuracy_pct",
+            "workload_stdev",
+        ]:
+            values = [float(run[metric]) for run in method_runs]
+            mean = statistics.mean(values)
+            std = statistics.stdev(values) if len(values) > 1 else 0.0
+            ci95 = 1.96 * std / sqrt(len(values)) if values else 0.0
+            row[f"{metric}_mean"] = mean
+            row[f"{metric}_std"] = std
+            row[f"{metric}_ci95"] = ci95
+        row["baseline_note"] = "simple heuristic baseline; no claim of state-of-the-art tuning"
+        aggregate.append(row)
+    return runs, aggregate
