@@ -245,11 +245,101 @@ def plot_e5(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     _finish_figure(results_dir, "e5_capacity_score", show)
 
 
+def plot_e3b(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    rows = read_csv(os.path.join(results_dir, "e3b_multisource_correctness.csv"))
+    row = rows[0]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    ax = axes[0]
+    accuracy = _float(row, "accuracy_scaled_pct")
+    ax.bar(["F1+F2 -> F4"], [accuracy], color=C["yours"], width=0.45, edgecolor="white")
+    ax.axhline(100, color="green", linestyle="--", lw=1.2, alpha=0.7)
+    ax.set_ylim(95, 101.5)
+    ax.set_ylabel("Scaled-sum correctness (%)")
+    ax.set_title("E3b - Multi-source slot correctness")
+    ax.text(0, accuracy + 0.05, f"{accuracy:.0f}%", ha="center", va="bottom", fontweight="bold")
+
+    ax2 = axes[1]
+    ax2.axis("off")
+    table_data = [
+        ["Total sensors", str(int(_float(row, "total_sensors")))],
+        ["Trials", str(int(_float(row, "trials")))],
+        ["Correct", f"{int(_float(row, 'correct_scaled'))}/{int(_float(row, 'trials'))}"],
+        ["Provisioned", row["provisioned_edges"]],
+        ["Median quant. err", f"{_float(row, 'median_quantization_error'):.4f}"],
+    ]
+    table = ax2.table(cellText=table_data, colLabels=["Metric", "Value"], loc="center", cellLoc="center")
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1.1, 1.6)
+    ax2.set_title("E3b summary", pad=12)
+    plt.tight_layout()
+    _finish_figure(results_dir, "e3b_multisource_correctness", show)
+
+
+def plot_e4(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    rows = read_csv(os.path.join(results_dir, "e4_kmm_combine.csv"))
+    k_values = [_float(row, "k_fog_aggregates") for row in rows]
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+    ax = axes[0]
+    ax.errorbar(
+        k_values,
+        [_float(row, "combine_latency_ms_median") for row in rows],
+        yerr=[_float(row, "combine_latency_ms_std") for row in rows],
+        marker="o",
+        color=C["yours"],
+        capsize=3,
+    )
+    ax.axhline(WINDOW_MS, color="red", linestyle="--", lw=1, alpha=0.7, label="500 ms window")
+    ax.set_xlabel("Fog aggregates combined (k)")
+    ax.set_ylabel("KMM combine latency (ms)")
+    ax.set_title("E4a - KMM combine latency")
+    ax.legend(fontsize=8)
+
+    ax2 = axes[1]
+    ax2.plot(k_values, [_float(row, "bytes_received") for row in rows], marker="s", color=C["paillier"])
+    ax2.set_xlabel("Fog aggregates combined (k)")
+    ax2.set_ylabel("Bytes received by KMM")
+    ax2.set_title("E4b - KMM input size")
+    plt.tight_layout()
+    _finish_figure(results_dir, "e4_kmm_combine", show)
+
+
+def plot_e6(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    rows = read_csv(os.path.join(results_dir, "e6_fault_detection.csv"))
+    scenarios = list(dict.fromkeys(row["scenario"] for row in rows))
+    methods = list(dict.fromkeys(row["method"] for row in rows))
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+    x = np.arange(len(scenarios))
+    width = 0.18
+    colors = [C["plain"], C["paillier"], C["aes"], C["yours"]]
+    for idx, method in enumerate(methods):
+        method_rows = [row for row in rows if row["method"] == method]
+        axes[0].bar(x + (idx - 1.5) * width, [_float(row, "data_loss_ms") for row in method_rows], width, label=method, color=colors[idx])
+        axes[1].bar(x + (idx - 1.5) * width, [_float(row, "recovery_latency_ms") for row in method_rows], width, label=method, color=colors[idx])
+    for ax, ylabel, title in [
+        (axes[0], "Data loss window (ms)", "E6a - Data loss by method"),
+        (axes[1], "Recovery latency (ms)", "E6b - Recovery latency by method"),
+    ]:
+        ax.set_xticks(x)
+        ax.set_xticklabels(scenarios, rotation=15, ha="right")
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+        ax.legend(fontsize=8)
+    plt.tight_layout()
+    _finish_figure(results_dir, "e6_fault_detection", show)
+
+
 def generate_all(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     plot_e1(results_dir, show=show)
     plot_e2(results_dir, show=show)
     plot_e3a(results_dir, show=show)
     plot_e5(results_dir, show=show)
+
+
+def generate_p2_all(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    plot_e3b(results_dir, show=show)
+    plot_e4(results_dir, show=show)
+    plot_e6(results_dir, show=show)
 
 
 if __name__ == "__main__":

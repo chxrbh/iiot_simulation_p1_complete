@@ -8,6 +8,7 @@ WINDOW_MS = 500.0
 SCALE = 1000
 TAU = 0.8
 KMM_PROV_MS = 50.0
+T_ACK_MS = 100.0
 TLS_MS = 20.0
 ATTEST_MS = 50.0
 
@@ -28,6 +29,26 @@ E3_K_VALUES = [1, 5, 10, 20, 50]
 E5_WINDOWS = 20
 E5_TASKS_PER_WINDOW = 100
 E5_TO_RATIO = 0.70
+
+E3B_SOURCE_N = 30
+E3B_SOURCES = ["F1", "F2"]
+E3B_BACKUP = "F4"
+E3B_BACKUP_OWN_N = 30
+E3B_K_DELEGATED_PER_SOURCE = 5
+E3B_TRIALS = 100
+
+E4_K_VALUES = [2, 5, 10, 20, 50, 100]
+E4_REPS = 30
+
+E6_FAILURE_SCENARIOS = {
+    "before_window": 0.0,
+    "mid_window_250ms": 250.0,
+    "late_window_450ms": 450.0,
+}
+E6_METHODS = ["none", "replication", "checkpoint", "ack_kmm"]
+E6_CHECKPOINT_INTERVAL_MS = 250.0
+E6_GOSSIP_DETECT_MS = 1500.0
+E6_ACK_KEY_BYTES = 28
 
 FOG_NODES = {
     "F1": {

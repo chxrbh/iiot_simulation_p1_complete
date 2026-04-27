@@ -1,0 +1,2 @@
+sources,backup,source_sensors_each,backup_own_sensors,total_sensors,k_delegated_per_source,trials,correct_scaled,accuracy_scaled_pct,median_quantization_error,max_quantization_error,max_scaled_error,median_trial_ms,provisioned_edges,security_note
+F1+F2,F4,30,30,90,5,100,100,100.0,0.04070000000047003,0.04730000000017753,0.0,17256.941700004973,F1->F4;F2->F4,"multi-source zero-fill uses randomized Paillier; indistinguishability is argued, not empirically tested"

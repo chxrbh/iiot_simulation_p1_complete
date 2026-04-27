@@ -5,7 +5,20 @@ from __future__ import annotations
 import random
 import unittest
 
-from config import E2_N_VALUES, E3_K_VALUES, E3_N, E3_TRIALS, SCALE, capacity_score
+from config import (
+    E2_N_VALUES,
+    E3_K_VALUES,
+    E3_N,
+    E3_TRIALS,
+    E3B_TRIALS,
+    E4_K_VALUES,
+    E6_FAILURE_SCENARIOS,
+    E6_METHODS,
+    KMM_PROV_MS,
+    SCALE,
+    T_ACK_MS,
+    capacity_score,
+)
 from crypto_sim import (
     KMM,
     aes_decrypt,
@@ -16,6 +29,7 @@ from crypto_sim import (
     sgx_enclave_process,
 )
 from experiments_p1 import run_e1, run_e2, run_e3a, run_e5
+from experiments_p2 import run_e3b, run_e4, run_e6
 
 
 class P1RepairTests(unittest.TestCase):
@@ -85,6 +99,35 @@ class P1RepairTests(unittest.TestCase):
         self.assertEqual({row["method"] for row in aggregate}, {"random", "round_robin", "threshold", "capacity"})
         for row in aggregate:
             self.assertIn("deadline_satisfaction_pct_ci95", row)
+
+    def test_e3b_multisource_shape_and_edges(self) -> None:
+        rows = run_e3b(self.pub, self.priv, self.k_fog, self.k_store, seed=7, trials=2)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(E3B_TRIALS, 100)
+        self.assertEqual(rows[0]["accuracy_scaled_pct"], 100.0)
+        self.assertEqual(rows[0]["provisioned_edges"], "F1->F4;F2->F4")
+
+    def test_e4_kmm_combine_shape_and_bytes(self) -> None:
+        rows = run_e4(self.pub, seed=7, reps=1, k_values=[2, 5])
+        self.assertEqual([row["k_fog_aggregates"] for row in rows], [2, 5])
+        for row in rows:
+            self.assertEqual(row["he_additions"], row["k_fog_aggregates"])
+            self.assertEqual(row["bytes_received"], row["k_fog_aggregates"] * row["ciphertext_bytes"])
+        self.assertEqual(E4_K_VALUES, [2, 5, 10, 20, 50, 100])
+
+    def test_e6_fault_model_pairs_and_ack_bound(self) -> None:
+        rows = run_e6()
+        self.assertEqual(len(rows), len(E6_FAILURE_SCENARIOS) * len(E6_METHODS))
+        ack_rows = [row for row in rows if row["method"] == "ack_kmm"]
+        for row in ack_rows:
+            remaining = row["window_ms"] - row["failure_time_ms"]
+            self.assertEqual(row["data_loss_ms"], min(remaining, T_ACK_MS + KMM_PROV_MS))
+        before = [row for row in rows if row["scenario"] == "before_window"]
+        none = next(row for row in before if row["method"] == "none")
+        replication = next(row for row in before if row["method"] == "replication")
+        ack = next(row for row in before if row["method"] == "ack_kmm")
+        self.assertGreater(replication["storage_overhead_factor"], ack["storage_overhead_factor"])
+        self.assertGreaterEqual(none["data_loss_ms"], ack["data_loss_ms"])
 
 
 if __name__ == "__main__":

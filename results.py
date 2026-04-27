@@ -80,3 +80,20 @@ def write_summary(
         )
         fh.write(f"## E2 Latency Conclusion\n{conclusion}\n\n")
         fh.write("Security note: SGX/TEE behavior is simulated; hardware isolation is a formal assumption.\n")
+
+
+def write_p2_summary(
+    path: str,
+    key_bits: int,
+    quick: bool = False,
+    paillier_backend: str = "unknown",
+) -> None:
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("# Repaired P2 Experiment Summary\n\n")
+        fh.write("This summary is generated from script-produced CSV files, not notebook state.\n\n")
+        fh.write(
+            f"Run mode: {'quick smoke test' if quick else 'full configured experiment'}; "
+            f"key_bits={key_bits}; Paillier backend={paillier_backend}.\n\n"
+        )
+        fh.write("Implemented P2 experiments: E3b multi-source correctness, E4 KMM combine overhead, and E6 ACK/KMM fault detection.\n\n")
+        fh.write("E6 note: fault detection is a deterministic analytical timing model, not live distributed fault injection.\n")
