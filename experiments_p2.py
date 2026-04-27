@@ -257,7 +257,7 @@ def _e6_method_metrics(method: str, failure_time_ms: float, seed: int) -> dict[s
     elif method == "checkpoint":
         last_checkpoint = (failure_time_ms // E6_CHECKPOINT_INTERVAL_MS) * E6_CHECKPOINT_INTERVAL_MS
         lost_start_ms = last_checkpoint
-        lost_end_ms = failure_time_ms
+        lost_end_ms = failure_time_ms + E6_CHECKPOINT_RESTORE_MS  # restore window: data unavailable until fully restored
         recovery_latency_ms = E6_CHECKPOINT_RESTORE_MS
         checkpoint_writes = float(observation_windows * len(FOG_NODES))
     elif method == "b4_multilayer":

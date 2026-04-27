@@ -89,6 +89,8 @@ class P1RepairTests(unittest.TestCase):
         self.assertEqual(row100["ours_ciphertexts"], 1)
         self.assertEqual(row100["ciphertext_count_reduction"], 100)
         self.assertAlmostEqual(row100["byte_reduction_vs_aes"], row100["aes_bytes"] / row100["ours_cloud_aes_bytes"])
+        self.assertEqual(row100["ours_cloud_aes_bytes"], 36,
+            "AES-GCM per-reading: 12 nonce + 8 body (worst-case ASCII float) + 16 tag")
 
     def test_e2_shape_quick(self) -> None:
         rows = run_e2(self.pub, self.priv, self.k_fog, self.k_store, seed=7, reps=1, n_values=[10])
@@ -110,7 +112,7 @@ class P1RepairTests(unittest.TestCase):
         self.assertEqual({row["method"] for row in aggregate}, {"random", "round_robin", "threshold", "capacity"})
         for row in aggregate:
             self.assertIn("deadline_satisfaction_pct_ci95", row)
-            self.assertIn("ls_policy_agreement_pct_mean", row)
+            self.assertIn("ls_capacity_score_agreement_pct_mean", row)
             self.assertIn("policy_agreement_note", row)
 
     def test_e5_sensitivity(self) -> None:
@@ -187,6 +189,8 @@ class P1RepairTests(unittest.TestCase):
         self.assertGreater(replication["message_overhead"], ack["message_overhead"])
         self.assertGreater(replication["compute_overhead"], checkpoint["compute_overhead"])
         self.assertGreater(checkpoint["checkpoint_writes"], 0)
+        self.assertGreater(checkpoint["data_loss_rate"], 0.0,
+            "fail_0ms checkpoint must lose readings during the 500ms restore window")
         self.assertGreater(ack["control_messages"], 0)
         self.assertLess(multilayer["data_loss_rate"], gossip["data_loss_rate"])
         self.assertGreater(multilayer["compute_overhead"], gossip["compute_overhead"])
@@ -218,12 +222,13 @@ class P1RepairTests(unittest.TestCase):
             self.assertAlmostEqual(float(row["total_ms"]), stage_total, places=9)
         storage_by_method = {row["method"]: row["storage_bytes_per_window"] for row in rows if row["window"] == 1}
         self.assertGreater(storage_by_method["cloud_only"], storage_by_method["fog_plaintext"])
-        self.assertGreater(storage_by_method["paillier_fog_convert"], storage_by_method["ours"])
+        self.assertEqual(storage_by_method["paillier_fog_convert"], storage_by_method["ours"],
+            "paillier_fog_convert now stores 1 aggregate; distinction vs ours is latency not storage")
         self.assertNotEqual(storage_by_method["fog_plaintext"], storage_by_method["ours"])
         items_by_method = {row["method"]: row["storage_items_per_window"] for row in rows if row["window"] == 1}
         self.assertEqual(items_by_method["cloud_only"], 5)
         self.assertEqual(items_by_method["fog_plaintext"], 1)
-        self.assertEqual(items_by_method["paillier_fog_convert"], 5)
+        self.assertEqual(items_by_method["paillier_fog_convert"], 1)
         self.assertEqual(items_by_method["ours"], 1)
 
     def test_e8_blast_radius(self) -> None:

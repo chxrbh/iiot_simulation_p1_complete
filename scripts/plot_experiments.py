@@ -381,7 +381,7 @@ def plot_e5_lb(results_dir: Path, figures_dir: Path, generated: list[str]) -> li
         "deadline_satisfaction_pct":("deadline_satisfaction_pct","deadline_satisfaction_pct_ci95"),
         "workload_stdev":           ("workload_stdev",            "workload_stdev_ci95"),
         "redelegation_rate_pct":    ("redelegation_rate_pct",     "redelegation_rate_pct_ci95"),
-        "ls_policy_agreement_pct":  ("ls_policy_agreement_pct",   "ls_policy_agreement_pct_ci95"),
+        "ls_capacity_score_agreement_pct":  ("ls_capacity_score_agreement_pct",   "ls_capacity_score_agreement_pct_ci95"),
         "to_policy_agreement_pct":  ("to_policy_agreement_pct",   "to_policy_agreement_pct_ci95"),
     }
     ci_vals: dict[str, dict[str, float]] = {}
@@ -448,9 +448,9 @@ def plot_e5_lb(results_dir: Path, figures_dir: Path, generated: list[str]) -> li
     # (e) task-type policy agreement — grouped LS / TO bars, higher is better
     ax = axes[1, 1]
     bw = 0.28
-    ls_vals = [_agg_val("ls_policy_agreement_pct_mean", m) for m in methods]
+    ls_vals = [_agg_val("ls_capacity_score_agreement_pct_mean", m) for m in methods]
     to_vals = [_agg_val("to_policy_agreement_pct_mean", m) for m in methods]
-    ls_errs = [ci_vals["ls_policy_agreement_pct"][m] for m in methods]
+    ls_errs = [ci_vals["ls_capacity_score_agreement_pct"][m] for m in methods]
     to_errs = [ci_vals["to_policy_agreement_pct"][m] for m in methods]
     ax.bar(x - bw / 2, ls_vals, bw, color=colors, edgecolor="white",
            linewidth=0.4, zorder=3,
@@ -462,7 +462,7 @@ def plot_e5_lb(results_dir: Path, figures_dir: Path, generated: list[str]) -> li
            label="TO tasks (throughput-oriented)")
     ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=6.5)
     ax.set_ylabel("Target-node agreement (%)")
-    ax.set_title("(e) Task-type policy agreement\n(synthetic oracle; higher = better)", pad=3)
+    ax.set_title("(e) CapScore self-agreement\n(F4 for LS, F1 for TO at base load)", pad=3)
     ax.yaxis.grid(True, alpha=0.25); ax.set_axisbelow(True)
     # small LS / TO legend inside panel
     from matplotlib.patches import Patch
@@ -471,9 +471,9 @@ def plot_e5_lb(results_dir: Path, figures_dir: Path, generated: list[str]) -> li
         Patch(facecolor="#555555", alpha=0.45, label="TO (faded)"),
     ], fontsize=6, loc="upper left")
     warn.append(
-        "NOTE (E5 panel e): ls_policy_agreement_pct and to_policy_agreement_pct measure "
-        "agreement with a synthetic per-task-type oracle, not a real ground truth. "
-        "Caption should say 'synthetic-oracle agreement'."
+        "NOTE (E5 panel e): ls_capacity_score_agreement_pct measures agreement with the "
+        "CapacityScore winner at base workload (F4 for LS, F1 for TO). This is circular "
+        "for the capacity method; caption must clarify 'CapScore self-agreement'."
     )
 
     # (f) hide unused panel

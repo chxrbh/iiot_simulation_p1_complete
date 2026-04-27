@@ -10,6 +10,7 @@ from config import (
     E7_CLOUD_UPLOAD_MS,
     E7_KMM_COMBINE_MS,
     E7_METHODS,
+    E7_MODEL_NOTE,
     E7_N,
     E7_NET_SENSOR_TO_CLOUD_MS,
     E7_NET_SENSOR_TO_FOG_MS,
@@ -120,9 +121,13 @@ def _run_paillier_fog_convert(
     row["paillier_accum_ms"] = n * E7_PAILLIER_ADD_MS
     row["cloud_upload_ms"] = E7_CLOUD_UPLOAD_MS
     row["privacy"] = True
-    row["storage_items_per_window"] = n
-    row["storage_bytes_per_window"] = n * paillier_ciphertext_bytes(pub_key)
-    row["privacy_note"] = "P2-SWAN-style Paillier baseline: fog converts and adds ciphertexts, stores n ciphertexts"
+    row["storage_items_per_window"] = 1
+    row["storage_bytes_per_window"] = paillier_ciphertext_bytes(pub_key)
+    row["privacy_note"] = (
+        "P2-SWAN-style Paillier baseline: fog converts AES to Paillier and accumulates; "
+        "stores 1 aggregate ciphertext (same byte cost as ours). "
+        "Distinguishing factors vs ours: no TEE delegation overhead, no KMM cross-fog key isolation."
+    )
     return _finish_e7_row(row)
 
 
@@ -212,6 +217,7 @@ def run_e7(
                 "storage_bytes_per_window_median": statistics.median(storage),
                 "within_500ms_windows": sum(1 for row in method_rows if row["within_500ms"]),
                 "violates_500ms_windows": sum(1 for row in method_rows if not row["within_500ms"]),
+                "model_note": E7_MODEL_NOTE,
             }
         )
     return rows, summary

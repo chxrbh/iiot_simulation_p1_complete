@@ -67,14 +67,29 @@ E7_N = 100
 E7_NODE = "F2"
 E7_NET_SENSOR_TO_FOG_MS = 2.0
 E7_NET_SENSOR_TO_CLOUD_MS = 30.0
-E7_SENSOR_AES_MS = 0.001
-E7_PLAINTEXT_SUM_MS = 1.0
-E7_PAILLIER_ENC_MS = 3.8
-E7_PAILLIER_ADD_MS = 0.01
-E7_KMM_COMBINE_MS = 1.0
-E7_STORAGE_PREP_MS = 5.0
-E7_CLOUD_UPLOAD_MS = 10.0
-E7_TEE_DELEGATION_MS = 150.0
+
+# E7 ANALYTICAL PIPELINE MODEL — hardware-target constants
+# =========================================================
+# E7 is NOT a Python-execution benchmark. It is an analytical latency model
+# using hardware-target values (AES hardware accelerators, SGX enclave timing,
+# Paillier co-processor estimates). Python interpreter overhead measured in E2
+# is 20–50x higher because it runs unoptimised Python big-integer arithmetic.
+# E7 and E2 are intentionally different: E2 measures the Python prototype;
+# E7 models the target deployment hardware. E7_MODEL_NOTE is stored in every
+# E7 CSV row so reviewers see the distinction without reading source code.
+E7_MODEL_NOTE = (
+    "E7 uses analytical hardware-target latency constants (see config.py). "
+    "These are NOT comparable to E2 Python-measured latencies, which are 20–50x "
+    "higher due to unoptimised Python big-integer arithmetic."
+)
+E7_SENSOR_AES_MS = 0.001        # hardware AES accelerator (e.g. STM32 AES peripheral)
+E7_PLAINTEXT_SUM_MS = 1.0       # fog CPU plaintext accumulation, n=100 readings
+E7_PAILLIER_ENC_MS = 3.8        # hardware-target Paillier encryption per slot
+E7_PAILLIER_ADD_MS = 0.01       # Paillier homomorphic addition (ciphertext-space op)
+E7_KMM_COMBINE_MS = 1.0         # KMM combine step inside TEE
+E7_STORAGE_PREP_MS = 5.0        # enclave storage serialisation
+E7_CLOUD_UPLOAD_MS = 10.0       # network upload to cloud store
+E7_TEE_DELEGATION_MS = 150.0    # TEE key delegation round-trip (provision + ACK)
 E7_METHODS = ["cloud_only", "fog_plaintext", "paillier_fog_convert", "ours"]
 E7_STAGE_COLUMNS = [
     "sensor_to_fog_ms",

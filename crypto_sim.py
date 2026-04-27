@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import gcd
 import os
+import platform
 import random
 import time
 
@@ -243,6 +244,11 @@ def generate_fog_keys(node_ids: list[str], rng: random.Random) -> tuple[dict[str
 
 
 def cpu_label() -> str:
+    """Return a human-readable CPU identifier for metadata logging.
+
+    Tries /proc/cpuinfo (Linux), then platform.processor() (Windows/macOS),
+    then os.uname().machine as a last resort.
+    """
     try:
         with open("/proc/cpuinfo", "r", encoding="utf-8") as fh:
             for line in fh:
@@ -250,4 +256,7 @@ def cpu_label() -> str:
                     return line.split(":", 1)[1].strip()
     except OSError:
         pass
+    proc = platform.processor()
+    if proc:
+        return proc
     return os.uname().machine if hasattr(os, "uname") else "unknown"

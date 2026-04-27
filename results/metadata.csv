@@ -5,7 +5,7 @@ paillier_backend,phe
 quick_smoke_run,False
 python,"3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]"
 platform,Windows-11-10.0.26200-SP0
-cpu,unknown
+cpu,"Intel64 Family 6 Model 186 Stepping 2, GenuineIntel"
 cryptography,47.0.0
 matplotlib,3.10.8
 numpy,2.4.3

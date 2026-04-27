@@ -66,7 +66,13 @@ CAPACITY_WEIGHT_VARIANTS: dict[str, CapacityWeights] = {
 
 def run_e1(pub_key: PaillierPublicKey) -> list[dict[str, object]]:
     paillier_bytes = paillier_ciphertext_bytes(pub_key)
-    aes_bytes_per_reading = 12 + 16 + 16
+    # AES-GCM per-reading byte breakdown:
+    #   nonce:  12 bytes (96-bit, NIST SP 800-38D)
+    #   body:    8 bytes = len("149.9999") — worst-case ASCII repr of
+    #            round(uniform(0, 150), 4); AES-GCM is a stream cipher so
+    #            ciphertext body length equals plaintext length exactly.
+    #   tag:    16 bytes (128-bit GCM authentication tag)
+    aes_bytes_per_reading = 12 + len("149.9999") + 16  # = 36
     plaintext_bytes_per_reading = 8
     rows = []
     for n in E1_N_VALUES:
@@ -402,7 +408,8 @@ def _run_e5_once(
         "delegated_completion_pct": (delegated_tasks - redelegated) / max(1, delegated_tasks) * 100.0,
         "deadline_satisfaction_pct": deadline_met / total_tasks * 100.0,
         "redelegation_rate_pct": redelegated / max(1, delegated_tasks) * 100.0,
-        "ls_policy_agreement_pct": ls_correct / max(1, ls_delegated) * 100.0,
+        "ls_capacity_score_agreement_pct": ls_correct / max(1, ls_delegated) * 100.0,
+        "oracle_is_capacity_score_winner": True,  # LS oracle = CapacityScore winner at base load = F4
         "to_policy_agreement_pct": to_correct / max(1, to_delegated) * 100.0,
         "workload_stdev": statistics.mean(stdevs),
         "assignment_f1": assignments["F1"],
@@ -410,6 +417,33 @@ def _run_e5_once(
         "assignment_f4": assignments["F4"],
         "weight_variant": weight_variant,
     }
+
+
+# Two-tailed t critical values for 95% CI, keyed by degrees of freedom (df = n-1).
+# For df >= 30 the normal approximation z=1.96 is used (error < 0.1%).
+# Values from standard t-distribution tables (matched to scipy.stats.t.ppf(0.975, df)).
+_T95_TABLE: dict[int, float] = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    20: 2.086, 29: 2.045,
+}
+
+
+def _t95(n: int) -> float:
+    """Return the two-tailed t critical value for a 95% CI with n observations.
+
+    Uses exact table values for df in {1..10, 20, 29}, linear interpolation for
+    df in (10, 29), and the normal approximation 1.96 for df >= 30.
+    """
+    df = max(n - 1, 1)
+    if df in _T95_TABLE:
+        return _T95_TABLE[df]
+    if df >= 30:
+        return 1.96
+    sorted_keys = sorted(_T95_TABLE)
+    lo = max(k for k in sorted_keys if k < df)
+    hi = min(k for k in sorted_keys if k > df)
+    return _T95_TABLE[lo] + (df - lo) / (hi - lo) * (_T95_TABLE[hi] - _T95_TABLE[lo])
 
 
 def run_e5(
@@ -432,19 +466,23 @@ def run_e5(
             "completion_pct",
             "deadline_satisfaction_pct",
             "redelegation_rate_pct",
-            "ls_policy_agreement_pct",
+            "ls_capacity_score_agreement_pct",
             "to_policy_agreement_pct",
             "workload_stdev",
         ]:
             values = [float(run[metric]) for run in method_runs]
             mean = statistics.mean(values)
             std = statistics.stdev(values) if len(values) > 1 else 0.0
-            ci95 = 1.96 * std / sqrt(len(values)) if values else 0.0
+            ci95 = _t95(len(values)) * std / sqrt(len(values)) if values else 0.0
             row[f"{metric}_mean"] = mean
             row[f"{metric}_std"] = std
             row[f"{metric}_ci95"] = ci95
         row["baseline_note"] = "heuristic baseline; no claim of state-of-the-art tuning"
-        row["policy_agreement_note"] = "LS/TO policy agreement is synthetic and should not be read as ground-truth accuracy"
+        row["policy_agreement_note"] = (
+            "ls_capacity_score_agreement_pct measures agreement with the CapacityScore "
+            "winner at base workload (F4 for LS, F1 for TO). This is circular for the "
+            "capacity method; it measures divergence for heuristic baselines."
+        )
         aggregate.append(row)
     return runs, aggregate
 
@@ -459,7 +497,7 @@ def run_e5_sensitivity(seeds: list[int] | None = None) -> list[dict[str, object]
             "completion_pct",
             "deadline_satisfaction_pct",
             "redelegation_rate_pct",
-            "ls_policy_agreement_pct",
+            "ls_capacity_score_agreement_pct",
             "to_policy_agreement_pct",
             "workload_stdev",
         ]:

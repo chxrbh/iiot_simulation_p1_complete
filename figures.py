@@ -249,12 +249,12 @@ def plot_e5(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     ax = axes[1, 1]
     x = np.arange(len(rows))
     width = 0.35
-    ax.bar(x - width / 2, [_float(row, "ls_policy_agreement_pct_mean") for row in rows], width, label="LS policy -> F4", color=bar_colors, edgecolor="white")
+    ax.bar(x - width / 2, [_float(row, "ls_capacity_score_agreement_pct_mean") for row in rows], width, label="LS CapScore -> F4", color=bar_colors, edgecolor="white")
     ax.bar(x + width / 2, [_float(row, "to_policy_agreement_pct_mean") for row in rows], width, label="TO policy -> F1", color=bar_colors, alpha=0.45, edgecolor="white")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=12, ha="right")
     ax.set_ylabel("Synthetic policy agreement (%)")
-    ax.set_title("Task-policy agreement\n(not ground-truth accuracy)")
+    ax.set_title("CapScore self-agreement\n(F4 for LS, F1 for TO at base load)")
     ax.legend(fontsize=8)
 
     for axis in axes.flat:
