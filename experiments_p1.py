@@ -288,10 +288,6 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
     stdevs = []
     assignments = defaultdict(int)
     for window in schedule:
-        current["F2"]["workload"] = float(window["f2_load"])
-        current["F2"]["queue"] = float(window["f2_load"]) * 0.8
-        current["F5"]["workload"] = 1.0 if not window["f5_alive"] else 0.45
-        current["F5"]["queue"] = 1.0 if not window["f5_alive"] else 0.40
         for nid in ["F1", "F3", "F4", "F5"]:
             current[nid]["workload"] = max(
                 current[nid]["workload"] * 0.85 + BASE_WORKLOAD[nid]["workload"] * 0.15,
@@ -301,6 +297,11 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
                 current[nid]["queue"] * 0.85 + BASE_WORKLOAD[nid]["queue"] * 0.15,
                 BASE_WORKLOAD[nid]["queue"],
             )
+        current["F2"]["workload"] = float(window["f2_load"])
+        current["F2"]["queue"] = float(window["f2_load"]) * 0.8
+        if not window["f5_alive"]:
+            current["F5"]["workload"] = 1.0
+            current["F5"]["queue"] = 1.0
         overloaded = {nid for nid, values in current.items() if values["workload"] >= TAU}
         wt_snapshot = {nid: dict(values) for nid, values in current.items()}
         stdevs.append(statistics.pstdev(values["workload"] for values in wt_snapshot.values()))
@@ -349,6 +350,7 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
         "tasks": total_tasks,
         "delegated_tasks": delegated_tasks,
         "completion_pct": completed / total_tasks * 100.0,
+        "delegated_completion_pct": (delegated_tasks - redelegated) / max(1, delegated_tasks) * 100.0,
         "deadline_satisfaction_pct": deadline_met / total_tasks * 100.0,
         "redelegation_rate_pct": redelegated / max(1, delegated_tasks) * 100.0,
         "ls_target_accuracy_pct": ls_correct / max(1, ls_delegated) * 100.0,
