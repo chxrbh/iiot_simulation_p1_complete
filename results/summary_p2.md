@@ -2,7 +2,7 @@
 
 This summary is generated from script-produced CSV files, not notebook state.
 
-Run mode: quick smoke test; key_bits=256; Paillier backend=pure-python.
+Run mode: full configured experiment; key_bits=2048; Paillier backend=phe.
 
 Implemented P2 experiments: E3b multi-source correctness, E4 KMM combine overhead, and E6 ACK/KMM fault detection.
 
