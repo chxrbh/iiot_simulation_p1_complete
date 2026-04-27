@@ -262,7 +262,7 @@ def _pick(method: str, candidates: list[str], task_type: str, wt: dict[str, dict
     if method == "round_robin":
         return rr.pick(candidates, task_type, wt, rng)
     if method == "threshold":
-        return sorted(candidates)[0]
+        return min(candidates, key=lambda nid: wt[nid]["workload"])
     if method == "capacity":
         return max(candidates, key=lambda nid: capacity_score(nid, wt, task_type))
     raise ValueError(f"Unknown E5 method: {method}")
@@ -293,8 +293,14 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
         current["F5"]["workload"] = 1.0 if not window["f5_alive"] else 0.45
         current["F5"]["queue"] = 1.0 if not window["f5_alive"] else 0.40
         for nid in ["F1", "F3", "F4", "F5"]:
-            current[nid]["workload"] = max(current[nid]["workload"] * 0.82, BASE_WORKLOAD[nid]["workload"])
-            current[nid]["queue"] = max(current[nid]["queue"] * 0.82, BASE_WORKLOAD[nid]["queue"])
+            current[nid]["workload"] = max(
+                current[nid]["workload"] * 0.85 + BASE_WORKLOAD[nid]["workload"] * 0.15,
+                BASE_WORKLOAD[nid]["workload"],
+            )
+            current[nid]["queue"] = max(
+                current[nid]["queue"] * 0.85 + BASE_WORKLOAD[nid]["queue"] * 0.15,
+                BASE_WORKLOAD[nid]["queue"],
+            )
         overloaded = {nid for nid, values in current.items() if values["workload"] >= TAU}
         wt_snapshot = {nid: dict(values) for nid, values in current.items()}
         stdevs.append(statistics.pstdev(values["workload"] for values in wt_snapshot.values()))
@@ -335,8 +341,8 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
             elif delegated_task and task_type == "TO":
                 to_correct += int(target == "F1")
             if delegated_task:
-                current[target]["workload"] = min(0.99, current[target]["workload"] + 0.10 / E5_TASKS_PER_WINDOW)
-                current[target]["queue"] = min(0.99, current[target]["queue"] + 0.06 / E5_TASKS_PER_WINDOW)
+                current[target]["workload"] = min(0.99, current[target]["workload"] + 0.20 / E5_TASKS_PER_WINDOW)
+                current[target]["queue"] = min(0.99, current[target]["queue"] + 0.12 / E5_TASKS_PER_WINDOW)
     return {
         "method": method,
         "seed": seed,
