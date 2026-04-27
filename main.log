@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.21)  27 APR 2026 19:48
+This is pdfTeX, Version 3.141592653-2.6-1.40.29 (TeX Live 2026) (preloaded format=pdflatex 2026.4.21)  27 APR 2026 20:35
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -559,15 +559,7 @@ Underfull \hbox (badness 2318) in paragraph at lines 283--284
  []
 
 
-Overfull \hbox (2.14594pt too wide) detected at line 292
-[]\OML/cmm/m/it/10 m[] \OMS/cmsy/m/n/10 ! \OML/cmm/m/it/10 C[] \OMS/cmsy/m/n/10
- ! \OML/cmm/m/it/10 C[] \OMS/cmsy/m/n/10 ! \OML/cmm/m/it/10 C[] \OMS/cmsy/m/n/1
-0 ! \OML/cmm/m/it/10 C[] \OMS/cmsy/m/n/10 ! \OML/cmm/m/it/10 C[] \OMS/cmsy/m/n/
-10 ! \OML/cmm/m/it/10 C[]
- []
-
-
-LaTeX Warning: File `Flow_diagram.png' not found on input line 389.
+LaTeX Warning: File `Flow_diagram.png' not found on input line 387.
 
 
 ! Package pdftex.def Error: File `Flow_diagram.png' not found: using draft sett
@@ -577,17 +569,25 @@ See the pdftex.def package documentation for explanation.
 Type  H <return>  for immediate help.
  ...                                              
                                                   
-l.389 ...cs[width=1.0\linewidth]{Flow_diagram.png}
+l.387 ...cs[width=1.0\linewidth]{Flow_diagram.png}
                                                   
 Try typing  <return>  to proceed.
 If that doesn't work, type  X <return>  to quit.
 
-
-Underfull \hbox (badness 1454) in paragraph at lines 398--399
+[5]
+Underfull \hbox (badness 1454) in paragraph at lines 396--397
 \OT1/ptm/m/n/10 cause the tar-get ag-gre-ga-tion functions---sum, mean, and
  []
 
-[5] [6] [7]
+
+Overfull \hbox (47.00359pt too wide) detected at line 429
+[]\OML/cmm/m/it/10 sealed[]sk[] \OT1/cmr/m/n/10 = \OML/cmm/m/it/10 Seal\OT1/cmr
+/m/n/10 (\OML/cmm/m/it/10 sk[];  ek[]\OT1/cmr/m/n/10 )\OML/cmm/m/it/10 ;  seale
+d[]k[] \OT1/cmr/m/n/10 = \OML/cmm/m/it/10 Seal\OT1/cmr/m/n/10 (\OML/cmm/m/it/10
+ k[];  ek[]\OT1/cmr/m/n/10 )
+ []
+
+[6] [7]
 Underfull \hbox (badness 10000) in paragraph at lines 651--652
 \OT1/ptm/m/n/10 the same per-reading KMM-provisioned re-as-sign-ment
  []
@@ -657,21 +657,21 @@ Underfull \hbox (badness 3108) in paragraph at lines 809--810
 m/m/n/10 but re-main-ing op-er-a-
  []
 
-
-LaTeX Warning: Citation `abdelbasset2019fault' on page 10 undefined on input li
-ne 814.
-
 [10]
 
+LaTeX Warning: Citation `abdelbasset2019fault' on page 11 undefined on input li
+ne 814.
+
+
 LaTeX Warning: Citation `goswami2004checkpoint' on page 11 undefined on input l
-ine 846.
+ine 842.
 
 
 LaTeX Warning: Citation `demers1988epidemic' on page 11 undefined on input line
- 848.
+ 844.
 
 [11]
-Underfull \hbox (badness 2503) in paragraph at lines 891--892
+Underfull \hbox (badness 2503) in paragraph at lines 887--888
 []\OT1/ptm/b/n/10 Setup and base-lines. \OT1/ptm/m/n/10 For each sen-sor count 
 $\OML/cmm/m/it/10 n \OMS/cmsy/m/n/10 2
  []
@@ -679,60 +679,66 @@ $\OML/cmm/m/it/10 n \OMS/cmsy/m/n/10 2
 <figures/exp1_storage.pdf, id=57, 502.1101pt x 177.3241pt>
 File: figures/exp1_storage.pdf Graphic file (type pdf)
 <use figures/exp1_storage.pdf>
-Package pdftex.def Info: figures/exp1_storage.pdf  used on input line 899.
+Package pdftex.def Info: figures/exp1_storage.pdf  used on input line 895.
 (pdftex.def)             Requested size: 252.0pt x 88.99733pt.
-<figures/exp2_latency.pdf, id=58, 502.8608pt x 184.40656pt>
+[12 <./figures/exp1_storage.pdf>]
+<figures/exp2_latency.pdf, id=142, 502.8608pt x 184.40656pt>
 File: figures/exp2_latency.pdf Graphic file (type pdf)
 <use figures/exp2_latency.pdf>
-Package pdftex.def Info: figures/exp2_latency.pdf  used on input line 917.
+Package pdftex.def Info: figures/exp2_latency.pdf  used on input line 913.
 (pdftex.def)             Requested size: 252.0pt x 92.41127pt.
-[12 <./figures/exp1_storage.pdf> <./figures/exp2_latency.pdf>]
-<figures/exp3a_correctness.pdf, id=236, 234.44527pt x 156.86743pt>
+<figures/exp3a_correctness.pdf, id=143, 234.44527pt x 156.86743pt>
 File: figures/exp3a_correctness.pdf Graphic file (type pdf)
 <use figures/exp3a_correctness.pdf>
-Package pdftex.def Info: figures/exp3a_correctness.pdf  used on input line 939.
+Package pdftex.def Info: figures/exp3a_correctness.pdf  used on input line 935.
 
 (pdftex.def)             Requested size: 252.0pt x 168.61722pt.
-<figures/exp4_kmm_combine.pdf, id=237, 243.93541pt x 156.86743pt>
+<figures/exp4_kmm_combine.pdf, id=144, 243.93541pt x 156.86743pt>
 File: figures/exp4_kmm_combine.pdf Graphic file (type pdf)
 <use figures/exp4_kmm_combine.pdf>
-Package pdftex.def Info: figures/exp4_kmm_combine.pdf  used on input line 957.
+Package pdftex.def Info: figures/exp4_kmm_combine.pdf  used on input line 953.
 (pdftex.def)             Requested size: 252.0pt x 162.06114pt.
- [13 <./figures/exp3a_correctness.pdf> <./figures/exp4_kmm_combine.pdf>]
-<figures/exp5_lb_comparison.pdf, id=354, 503.41618pt x 364.1585pt>
+
+
+LaTeX Warning: Reference `sec:lb' on page 13 undefined on input line 963.
+
+[13 <./figures/exp2_latency.pdf> <./figures/exp3a_correctness.pdf>]
+<figures/exp5_lb_comparison.pdf, id=297, 503.41618pt x 364.1585pt>
 File: figures/exp5_lb_comparison.pdf Graphic file (type pdf)
 <use figures/exp5_lb_comparison.pdf>
-Package pdftex.def Info: figures/exp5_lb_comparison.pdf  used on input line 977
+Package pdftex.def Info: figures/exp5_lb_comparison.pdf  used on input line 973
 .
 (pdftex.def)             Requested size: 252.0pt x 182.28995pt.
-<figures/exp6_data_loss.pdf, id=355, 502.49355pt x 208.4258pt>
+ [14 <./figures/exp4_kmm_combine.pdf> <./figures/exp5_lb_comparison.pdf>]
+<figures/exp6_data_loss.pdf, id=455, 502.49355pt x 208.4258pt>
 File: figures/exp6_data_loss.pdf Graphic file (type pdf)
 <use figures/exp6_data_loss.pdf>
-Package pdftex.def Info: figures/exp6_data_loss.pdf  used on input line 995.
+Package pdftex.def Info: figures/exp6_data_loss.pdf  used on input line 991.
 (pdftex.def)             Requested size: 252.0pt x 104.5243pt.
-<figures/exp6_tradeoff.pdf, id=356, 278.0491pt x 187.1493pt>
+<figures/exp6_tradeoff.pdf, id=456, 278.0491pt x 187.1493pt>
 File: figures/exp6_tradeoff.pdf Graphic file (type pdf)
 <use figures/exp6_tradeoff.pdf>
-Package pdftex.def Info: figures/exp6_tradeoff.pdf  used on input line 1002.
+Package pdftex.def Info: figures/exp6_tradeoff.pdf  used on input line 998.
 (pdftex.def)             Requested size: 252.0pt x 169.61505pt.
- [14 <./figures/exp5_lb_comparison.pdf> <./figures/exp6_data_loss.pdf> <./figur
-es/exp6_tradeoff.pdf>]
-Underfull \hbox (badness 5878) in paragraph at lines 1012--1013
+
+Underfull \hbox (badness 5878) in paragraph at lines 1008--1009
 \OT1/ptm/m/n/10 ware AES-NI), Pail-lier en-cryp-tion per slot (3.8 ms,
  []
 
-<figures/exp7_pipeline.pdf, id=588, 502.55629pt x 185.46129pt>
+<figures/exp7_pipeline.pdf, id=457, 502.55629pt x 185.46129pt>
 File: figures/exp7_pipeline.pdf Graphic file (type pdf)
 <use figures/exp7_pipeline.pdf>
-Package pdftex.def Info: figures/exp7_pipeline.pdf  used on input line 1020.
+Package pdftex.def Info: figures/exp7_pipeline.pdf  used on input line 1016.
 (pdftex.def)             Requested size: 252.0pt x 92.99641pt.
-<figures/exp8_blast_radius.pdf, id=589, 270.58025pt x 173.26895pt>
+[15 <./figures/exp6_data_loss.pdf> <./figures/exp6_tradeoff.pdf> <./figures/exp
+7_pipeline.pdf>]
+<figures/exp8_blast_radius.pdf, id=663, 270.58025pt x 173.26895pt>
 File: figures/exp8_blast_radius.pdf Graphic file (type pdf)
 <use figures/exp8_blast_radius.pdf>
-Package pdftex.def Info: figures/exp8_blast_radius.pdf  used on input line 1038
+Package pdftex.def Info: figures/exp8_blast_radius.pdf  used on input line 1034
 .
 (pdftex.def)             Requested size: 252.0pt x 161.37111pt.
-[15 <./figures/exp7_pipeline.pdf> <./figures/exp8_blast_radius.pdf>]
+ [16 <./figures/exp8_blast_radius.pdf>]
 No file main.bbl.
 
 ** Conference Paper **
@@ -745,7 +751,9 @@ Before submitting the final camera ready copy, remember to:
  uses only Type 1 fonts and that every step in the generation
  process uses the appropriate paper size.
 
-[16] (./main.aux)
+[17
+
+] (./main.aux)
  ***********
 LaTeX2e <2025-11-01>
 L3 programming layer <2026-03-20>
@@ -754,12 +762,15 @@ L3 programming layer <2026-03-20>
 
 LaTeX Warning: There were undefined references.
 
+
+LaTeX Warning: Label(s) may have changed. Rerun to get cross-references right.
+
  ) 
 Here is how much of TeX's memory you used:
- 4244 strings out of 467349
- 68266 string characters out of 5419862
- 517273 words of memory out of 5000000
- 33286 multiletter control sequences out of 15000+600000
+ 4245 strings out of 467349
+ 68274 string characters out of 5419862
+ 519043 words of memory out of 5000000
+ 33287 multiletter control sequences out of 15000+600000
  673499 words of font info for 131 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
  57i,14n,65p,2156b,488s stack positions out of 10000i,1000n,20000p,200000b,200000s
@@ -781,10 +792,10 @@ c:/texlive/2026/texmf-dist/fonts/type1/urw/times/utmb8a.pfb><c:/texlive/2026/te
 xmf-dist/fonts/type1/urw/times/utmbi8a.pfb><c:/texlive/2026/texmf-dist/fonts/ty
 pe1/urw/times/utmr8a.pfb><c:/texlive/2026/texmf-dist/fonts/type1/urw/times/utmr
 i8a.pfb>
-Output written on main.pdf (16 pages, 516366 bytes).
+Output written on main.pdf (17 pages, 521001 bytes).
 PDF statistics:
- 803 PDF objects out of 1000 (max. 8388607)
- 183 compressed objects within 2 object streams
+ 806 PDF objects out of 1000 (max. 8388607)
+ 185 compressed objects within 2 object streams
  0 named destinations out of 1000 (max. 500000)
  46 words of extra memory for PDF output out of 10000 (max. 10000000)
 

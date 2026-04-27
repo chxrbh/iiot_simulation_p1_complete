@@ -36,7 +36,7 @@
     \maketitle
 
     \begin{abstract}
-    This paper proposes a fault-tolerant and load-balanced Industrial Internet of Things (IIoT) edge--fog architecture deployed over multiple Kubernetes clusters for secure and low-latency data processing. The framework combines fog-scoped sensor AES keys, trusted execution environment (TEE)-enforced key transformation, Paillier slot aggregation, gossip-based load balancing, sensor-side ACK redirects, and cloud-layer ciphertext-policy attribute-based encryption (CP-ABE). To address workload dynamics and fog failures in heterogeneous fog environments, fog nodes exchange status through a decentralized gossip protocol and check the most recent workload table on every incoming sensor reading. Overload is handled through KMM-provisioned enclave delegation without sensor retransmission, while ACK timeout allows sensors to redirect encrypted readings after direct fog silence and notify the KMM for delegated key provisioning. Vacated aggregation slots are filled with Paillier encryptions of zero when the original fog node remains alive, and the key management module combines one aggregate ciphertext per fog node at each 500~ms window close. Overall, the proposed scheme jointly supports fog-scoped key isolation, adaptive per-reading delegation, bounded-loss ACK-based recovery, storage-efficient aggregation, and resilient fog operation for time-sensitive industrial monitoring and control applications.
+    This paper proposes a fault-tolerant and load-balanced Industrial Internet of Things (IIoT) edge--fog architecture deployed over multiple Kubernetes clusters for secure, storage-efficient data processing with fault-resilient operation. The framework combines fog-scoped sensor AES keys, trusted execution environment (TEE)-enforced key transformation, Paillier slot aggregation, gossip-based load balancing, sensor-side ACK redirects, and cloud-layer ciphertext-policy attribute-based encryption (CP-ABE). To address workload dynamics and fog failures in heterogeneous fog environments, fog nodes exchange status through a decentralized gossip protocol and check the most recent workload table on every incoming sensor reading. Overload is handled through KMM-provisioned enclave delegation without sensor retransmission, while ACK timeout allows sensors to redirect encrypted readings after direct fog silence and notify the KMM for delegated key provisioning. Vacated aggregation slots are filled with Paillier encryptions of zero when the original fog node remains alive, and the key management module combines one aggregate ciphertext per fog node at each 500~ms window close. Overall, the proposed scheme jointly supports fog-scoped key isolation, adaptive per-reading delegation, bounded-loss ACK-based recovery, storage-efficient aggregation, and resilient fog operation for time-sensitive industrial monitoring and control applications.
     \end{abstract}
 
     \begin{IEEEkeywords}
@@ -69,7 +69,7 @@
     critical challenges. First, heterogeneous fog nodes subject to static 
     workload assignment create resource imbalance, where weaker nodes 
     become overloaded while stronger nodes remain 
-    underutilized~\cite{kashani2023}. Second fault tolerance mechanisms in fog environments introduce extra computational and storage overhead, which affects performance in resource-constrained settings~\cite{chen2024lb}. Third, many 
+    underutilized~\cite{kashani2023}. Second, fault-tolerance mechanisms in fog environments introduce extra computational and storage overhead, which affects performance in resource-constrained settings~\cite{chen2024lb}. Third, many 
     existing systems require fog nodes to decrypt sensor data before 
     performing aggregation, violating the zero-trust assumption of modern 
     distributed infrastructures and exposing sensitive industrial data at 
@@ -107,163 +107,67 @@
     providing end-to-end data confidentiality without exposing plaintext 
     at any intermediate processing stage.
 
-    \section{Related Work}
-    This section reviews existing literature relevant to the proposed secure IIoT fog computing system. The related work is organized into two main areas: (1) load balancing and fault tolerance in fog computing environments, and (2) encryption schemes and trusted execution mechanisms for IIoT data security, including symmetric encryption, trusted execution environments, homomorphic encryption, attribute-based encryption, and hybrid cryptographic approaches.
+       \section{Related Work}
 
-    \subsection{Encryption Schemes for IIoT and Fog Computing}
-    Securing data in IIoT and fog architectures requires protecting sensor
-    measurements across untrusted intermediate nodes while ensuring confidentiality,integrity, and fine-grained access control. This subsection surveys the cryptographic and hardware-enforced building blocks most relevant to this problem: AES-based sensor encryption, trusted execution environments for secure key transformation and delegation, homomorphic encryption for privacy-preserving aggregation, and ciphertext-policy attribute-based encryption for cloud access control. Each area is examined with attention to
-    the limitations of existing proposals and the open problems that motivate the
-    contributions of this paper.
+This section reviews existing literature relevant to the proposed task-aware IIoT fog computing framework across three areas: (A) load balancing in fog environments, (B) fault tolerance mechanisms for distributed fog systems, and (C) privacy-preserving data processing in IIoT and fog computing. For each area, we summarise representative approaches, identify their key limitations, and explain how those limitations motivate the design choices in the proposed framework.
 
-    \subsubsection{Symmetric Encryption (AES) for Lightweight Sensor Security}
-    AES remains the dominant symmetric cipher in IIoT sensor deployments owing to its hardware acceleration support, strong provable security, and NIST standardization~\cite{nist_aes}. Neshenko et al.~\cite{neshenko2019} survey IIoT vulnerability classes and conclude that sensor-layer symmetric encryption is a necessary first line of defense, as it prevents passive eavesdropping on wireless channels without imposing public-key overhead on resource-constrained devices. Simplicio et al.~\cite{simplicio} demonstrate that AES-128 in CTR mode achieves adequate throughput on Cortex-M0 class processors while keeping energy consumption within the budget of battery-operated sensors, and Liuet al.~\cite{liu2021} show that lightweight AES variants can be integrated with fog offloading pipelines at sub-millisecond encryption latency per packet. More recent work has examined AES in the context of evolving lightweight cryptography standards. Sevin and Mohammed~\cite{sevin2023} conduct a comparative software implementation survey of lightweight block ciphers for constrained IoT devices and find that AES-128 continues to provide the best security-to-performance ratio on devices equipped with hardware acceleration,while alternatives such as ASCON may be preferable when no hardware accelerator is available. Amrita et al.~\cite{amrita2024} similarly conclude that AES remains appropriate for fog-adjacent gateway nodes but caution that devices below the Cortex-M3 class require algorithm-level optimizations to meet latency targets in high-frequency sensor deployments. A recent comprehensive survey on lightweight cryptographic mechanisms specifically for IIoT~\cite{iiot_lwc2025} identifies AES-128 as the recommended minimum-security baseline consistent with ISO/IEC 29192, yet also highlights that the majority of existing schemes apply AES only at the sensor layer without addressing how the resulting ciphertext should be processed, delegated, or re-encrypted at intermediate fog nodes. This observation underscores the need for multi-layer architectures that extend beyond single-point symmetric encryption.
+\subsection{Load Balancing in Fog Computing}
 
-    \subsubsection{Trusted Execution Environments for Secure Delegation}
+Load balancing in fog computing is concerned with distributing incoming workloads efficiently across available nodes to prevent bottlenecks and maximise resource utilisation~\cite{kashani2020}. The challenge is compounded by the heterogeneous capacity of fog nodes which differ in CPU, memory, and network bandwidth and by the diversity of IIoT task types, which impose widely varying computational demands. Recent surveys identify three dominant strategy families: centralised scheduling, decentralised peer-to-peer coordination, and gossip-based dissemination~\cite{vijarania2025,nemati2024}.
 
-    Trusted execution environments (TEEs), such as Intel SGX, provide hardware-isolated execution contexts whose memory is protected from the host operating system and other privileged software. In fog computing environments, this property enables a different delegation model from proxy re-encryption: instead of asking a semi-trusted proxy to transform ciphertexts across incompatible schemes, the enclave can hold sealed key material, decrypt and re-encrypt data internally, and prove the integrity of the enclave code through remote attestation before keys are provisioned.
+\subsubsection{Optimisation-Based Approaches}
 
-    TEE-based designs are particularly relevant when a pipeline must bridge cryptographic domains. AES ciphertexts, Paillier ciphertexts, and AES storage ciphertexts are not interchangeable objects under a single re-encryption operation. A TEE therefore provides a practical enforcement boundary for operations that require plaintext or secret keys temporarily inside the fog node while keeping those values inaccessible to the honest-but-curious host OS. The remaining open problem is how to combine this hardware-backed key transformation with adaptive workload delegation so that overload and failure recovery do not require constrained sensors to generate fresh delegation keys or retransmit measurements.
+Early optimisation-based methods applied metaheuristics such as Particle Swarm Optimisation and Ant Colony Optimisation to allocate workflows across fog nodes~\cite{tripathy2026}. The FOCALB architecture combined fitness-based node selection with fog-aware scheduling to reduce execution time and energy consumption for scientific workflow applications~\cite{kaur2021}. While FOCALB demonstrated the value of capacity-aware routing, it targets batch workflows rather than the continuous, high-frequency sensor streams characteristic of IIoT deployments, and provides no mechanism for differentiating among task types with heterogeneous computational profiles.
 
-    \subsubsection{Paillier Homomorphic Encryption for Privacy-Preserving Fog
-    Aggregation}
+Multi-criteria decision-making frameworks extended optimisation approaches by jointly evaluating CPU load, network latency, and queue depth. Ebrahim and Hafid proposed an ELECTRE-based outranking method that ranks fog nodes by pairwise concordance and discordance across multiple criteria~\cite{ebrahim2023b}. Although this approach produces theoretically principled decisions, its $\mathcal{O}(N^2)$ pairwise comparison complexity is prohibitive under high IIoT task arrival rates. The authors explicitly deployed the method on resource-rich SDN controllers, introducing a centralised coordinator that becomes a single point of failure. A follow-up hybrid model combining FAHP and FTOPSIS improved utilisation in fog-cloud simulations~\cite{ahmed2024} but similarly assumed a centralised control plane. Ahmed et al.\ proposed an adaptive multi-criteria framework for fog-cloud resource allocation that achieved load balance improvements over conventional round-robin and threshold baselines~\cite{alshafei2023}; however, their weight assignment relied on expert judgement rather than empirical calibration against measured sensor workloads, limiting applicability to heterogeneous IIoT environments.
 
-    Homomorphic encryption, fully formalized by Gentry~\cite{gentry2009} and made
-    practically efficient in leveled form by the BFV~\cite{bfv2012} and
-    CKKS~\cite{ckks2017} schemes, allows computations to be performed directly on
-    ciphertexts without decryption. Acar et al.~\cite{acar2018} survey practical HE
-    constructions and conclude that leveled schemes such as BFV are well-suited for
-    fog aggregation workloads where the multiplicative depth required by common
-    aggregation functions (sum, weighted average, threshold count) is low. Froelicher
-    et al.~\cite{froelicher2021} propose a distributed HE aggregation protocol for
-    multi-party analysis and demonstrate that HE-based aggregation across
-    geographically distributed nodes is feasible at scale. Lu et
-    al.~\cite{lu2017} apply CKKS-based HE to fog-cloud pipelines for IoT sensor
-    aggregation and report latency compatible with one-second reporting intervals.
+\subsubsection{Reinforcement Learning Approaches}
 
-    Recent work has further validated HE for IIoT aggregation while exposing
-    important limitations. Wang et al.~\cite{wang2024smpc} address secure real-time
-    data aggregation in IIoT using secret sharing combined with partially
-    homomorphic encryption and note that fully homomorphic constructions impose
-    impractical overhead for dense real-time pipelines, while partial schemes
-    restrict the types of aggregation that can be supported to a single arithmetic
-    operation. Abbas et al.~\cite{abbas2024bmda} propose a blockchain-based
-    multifunctional aggregation method for fog-IoT using Paillier homomorphic
-    encryption and demonstrate that ciphertext expansion and key management overhead
-    remain practical challenges at scale, particularly when aggregated ciphertexts
-    must be stored and later queried in a cloud environment. Zhang et
-    al.~\cite{zhang2022mohe} provide a systematic method for BFV parameter
-    selection based on target multiplicative depth and security level, informing
-    the tradeoff between computational precision and ciphertext expansion that must
-    be resolved in heterogeneous sensor deployments.
+Reinforcement learning has been applied to fog load balancing to handle dynamic workloads without static scheduling rules. Ebrahim and Hafid proposed a Double Deep Q-Learning agent that minimises waiting time while preserving node-load privacy in multi-provider deployments~\cite{ebrahim2023a}. More recently, the same group extended this to a fully distributed Multi-Agent Reinforcement Learning (MARL) framework in which agents operate within local collaboration regions, incorporating a gossip-based observation protocol to address the impracticality of real-time global state visibility~\cite{ebrahim2025}. While MARL improves scalability compared to centralised RL, these approaches require an offline training phase and may need retraining when network topology or task arrival distributions change a significant limitation in safety-critical IIoT systems where operational continuity is mandatory. Furthermore, neither the RL nor the MARL formulations differentiate among sensor types: vibration, pressure, temperature, and flow sensors are treated as a homogeneous task class despite their substantially different computational demands.
 
-    A recurring gap in this body of work is the absence of a domain conversion
-    mechanism that decouples the HE computation domain from a more compact storage
-    domain. When aggregated HE ciphertexts must be stored in the cloud, the
-    substantial ciphertext expansion inherent to HE introduces storage overhead
-    and forces cloud services to hold HE private keys, unnecessarily widening the
-    trust boundary. Existing schemes do not address how this domain gap can be
-    bridged efficiently while preserving the honest-but-curious cloud adversary
-    assumption.
+\subsubsection{Gossip-Based and Decentralised Approaches}
 
-    In this work, the homomorphic layer is instantiated with Paillier encryption rather than a generic HE scheme. Paillier directly supports additive aggregation, mean computation after decryption, and weighted sums through scalar multiplication, which covers the target class of fixed-window IIoT aggregation workloads. Operations requiring ciphertext multiplication or comparison, such as variance, maximum, minimum, and threshold counting, are outside the Paillier-only scope.
+Gossip protocols have attracted attention for fog load management because they disseminate status information among nodes through random pairwise exchanges without requiring a central coordinator. Kashani et al.\ surveyed gossip and epidemic-style load balancing mechanisms, noting their low per-node message overhead and natural scalability but identifying their limited integration with task-aware delegation policies as an open problem~\cite{kashani2020}. A recent systematic literature review covering 113 peer-reviewed studies from 2020 to 2024 confirmed that gossip-based coordination remains predominantly used for monitoring rather than as a complete scheduling substrate, and highlighted the lack of heterogeneous task-type differentiation as a critical gap across the field~\cite{vijarania2025}.
 
-    \subsubsection{Ciphertext-Policy Attribute-Based Encryption (CP-ABE) for
-    Fine-Grained Access Control}
+A key limitation shared by all three strategy families is their treatment of tasks as homogeneous units, typically classified only by delay sensitivity. In practice, IIoT workloads differ substantially: a vibration sensor task involving FFT-based spectral analysis is compute-intensive ($\mathcal{O}(n \log n)$), whereas a temperature monitoring task involves only threshold evaluation ($\mathcal{O}(n)$). Assigning identical routing weights to these tasks leads to suboptimal delegation decisions, particularly under heterogeneous node configurations. The proposed framework addresses this by introducing a sensor-type and delay-class weight matrix that adapts the delegation score to the actual computational profile of each task class, combined with a task compatibility term that reduces queue contention without requiring a centralised controller.
 
-    Attribute-based encryption was introduced by Sahai and Waters~\cite{sahai2005}
-    and extended to the ciphertext-policy setting by Bethencourt, Sahai, and
-    Waters~\cite{bethencourt2007}, enabling data-centric access policies to be
-    embedded directly in ciphertexts. Li et al.~\cite{li2013} demonstrate CP-ABE
-    access control for smart grid data in the cloud and show that the scheme scales
-    as the number of attribute authorities and authorized consumers grows, making it
-    suitable for multi-tenant deployments. Ibraimi et al.~\cite{ibraimi2009} propose
-    a mediated CP-ABE construction supporting attribute revocation without
-    re-encryption of stored ciphertexts, an important practical requirement when
-    service accounts are dynamically decommissioned. Yang et al.~\cite{yang2013}
-    integrate CP-ABE with fog computing to enforce access control at the fog tier
-    before data reaches the cloud, thereby reducing the exposure window for
-    sensitive IIoT data.
+\subsection{Fault Tolerance in Fog Computing}
 
-    More recent work has targeted computational efficiency and multi-authority
-    scenarios. Qu et al.~\cite{qu2024cpabe} propose a pairing-free CP-ABE scheme
-    for IoT based on elliptic curve scalar multiplication with multi-authority key
-    management and verifiable outsourced decryption; this significantly reduces
-    decryption cost on constrained devices but does not address decryption by
-    containerized analytics services in a multi-cluster deployment environment. Li
-    et al.~\cite{li2025fhac} present an efficient fine-grained access control
-    scheme with fully hidden policies for cloud-enabled IoT using bloom filters to
-    match attributes without revealing the policy structure; however, the scheme
-    assumes a single-authority trust model and does not integrate with HE-based fog
-    aggregation pipelines. Pe\~{n}uelas-Angulo et al.~\cite{penuelas2024} propose a
-    revocable multi-authority ABE scheme for fog-enabled IoT that outsources partial
-    decryption to fog nodes to reduce end-device decryption latency; this design
-    introduces fog-side decryption, which conflicts with honest-but-curious threat
-    models requiring fog nodes to remain oblivious to plaintext. Das and
-    Namasudra~\cite{das2023} propose a multi-authority CP-ABE access control model
-    for IoT-enabled healthcare infrastructure and show that distributing attribute
-    management across authorities improves resilience, yet rely on a centralized
-    key distribution server that constitutes a single point of failure in industrial
-    deployments.
+Fog environments are susceptible to node failures caused by hardware faults, network instability, or transient resource exhaustion. A comprehensive 2024 taxonomy of fault-tolerance approaches in distributed and cloud computing organised existing methods into reactive, proactive, adaptive, and hybrid categories~\cite{kirti2024}. In the fog context, the dominant techniques remain replication, checkpointing, and resubmission-based scheduling.
 
-    Despite these advances, existing CP-ABE schemes for fog and cloud environments
-    are generally evaluated in isolation from HE aggregation pipelines or
-    Paillier slot-aggregation and TEE-assisted load balancing mechanisms. The integration of fine-grained access
-    control with prior cryptographic stages remains an open design problem for
-    IIoT architectures.
+\subsubsection{Replication and Checkpointing}
 
-    \subsubsection{Hybrid Cryptographic Schemes for IIoT}
+Replication-based methods maintain backup copies of tasks across multiple fog nodes so that computation can continue when a primary node fails. Liu et al.\ proposed a replica-based scheduling strategy for heterogeneous cloud-fog environments that minimises the number of replicas needed while satisfying reliability constraints~\cite{liu2024}. Rajab and Younis introduced a dynamic fault-tolerant scheduling scheme combining checkpointing and replication that periodically stores task states, enabling recovery without full restart when failures occur~\cite{rajab2021}. Both approaches have demonstrated reliability improvements; however, they introduce additional storage overhead and computational cost proportional to the replication factor, which is problematic for resource-constrained fog nodes. Furthermore, these methods address load balancing and fault tolerance as separate concerns, leading to fragmented system designs and increased coordination overhead.
 
-    Practical IIoT deployments increasingly combine multiple cryptographic
-    primitives into hybrid pipelines that balance security strength with
-    performance constraints. Qin et al.~\cite{qin2022} survey delegation schemes for
-    cloud data sharing and highlight the efficiency of hybrid AES-ABE patterns in
-    which AES encrypts bulk data while ABE protects the symmetric key. Fu et
-    al.~\cite{fu2015} demonstrate that three-layer hybrid pipelines can remain
-    computationally feasible on ARM Cortex-A class fog hardware. Raisaro et
-    al.~\cite{raisaro2017} present a four-layer pipeline combining symmetric source
-    encryption, homomorphic aggregation, domain conversion, and ABE-based access
-    control, providing empirical evidence that the combined pipeline latency is
-    compatible with real-time reporting requirements.
+\subsubsection{Metaheuristic and ML-Based Fault-Tolerant Scheduling}
 
-    Recent hybrid proposals have continued to expand this design space. Rani
-    et al.~\cite{rani2024} propose a hybrid AES-ECC framework for fog-based smart
-    grid IoT that demonstrates layered encryption can improve privacy while
-    maintaining acceptable latency; however, the scheme does not incorporate homomorphic encryption for
-    computation over ciphertexts and provides no mechanism for encrypted workload
-    reassignment. A 2025 adaptive fog encryption study~\cite{adaptive2025} employs
-    machine learning to dynamically select among symmetric and hybrid cryptographic
-    schemes based on data sensitivity and network context, improving overall
-    pipeline efficiency; this approach, however, does not address scenarios in which
-    fog nodes become overloaded or fail during aggregation.
+Hybrid metaheuristic methods have been proposed to jointly optimise workload distribution and fault-tolerant scheduling. Ghasemi proposed the MOHHO algorithm combining Modified Harris Hawks Optimisation with multi-objective service placement in fog computing, which identifies critical tasks and selectively applies replication or resubmission strategies upon node failure~\cite{ghasemi2024}. A 2024 hybrid fault-tolerant scheduling framework using fuzzy logic-based task criticality assessment integrated with dual-backup resubmission demonstrated reduced energy overhead compared to uniform replication, evaluated under failure rates of 1-10\% in iFogSim~\cite{merah2024}. While these approaches improve reliability, they require offline parameter tuning and incur convergence overhead that may delay task reassignment under real-time failure conditions. Mohammadi et al.\ studied fault tolerance specifically in fog-based Social IoT environments and highlighted that combining failure detection with load redistribution in a unified lightweight mechanism remains an open challenge~\cite{mohammadi2023}.
 
-    Despite the progress surveyed above, no existing hybrid IIoT pipeline
-    simultaneously satisfies all four of the following properties in a fog-cloud
-    context: (i) fog-scoped lightweight AES encryption at the sensor layer, (ii) KMM-provisioned
-    attested enclave delegation supporting both load balancing and fault tolerance
-    without requiring sensor retransmission during overload handling and with ACK-timeout retransmission for direct failed-node recovery, (iii) Paillier slot-grouped fog
-    aggregation with zero-fill consistency under mid-window delegation, and
-    (iv) CP-ABE-based fine-grained access control integrated with multi-cluster
-    Kubernetes analytics services. The present work addresses this gap by composing
-    these mechanisms into a unified end-to-end architecture.
+\subsubsection{Gossip-Based Failure Detection}
 
-    \subsection{Load Balancing and Fault Tolerance in Fog Computing}
-    Fog computing extends cloud capabilities closer to edge devices to support latency-sensitive IIoT applications and reduce bandwidth consumption. However, this distribution also introduces new challenges in workload management and system resilience. Several approaches have been proposed in the literature to address load balancing and fault tolerance in fog environments.
+Gossip protocols were originally proposed for distributed database maintenance and epidemic information dissemination~\cite{demers1988epidemic}. Their application to failure detection in fog networks follows naturally from their decentralised nature: nodes declare a peer unavailable when it fails to respond for a predefined number of consecutive gossip rounds, without requiring a centralised health monitor. Naha et al.\ proposed a fuzzy logic-based failure handling mechanism built on gossip-style status exchange for fog nodes~\cite{naha2021}, demonstrating that decentralised detection can adapt robustly to varying failure rates. However, this work did not integrate failure detection with task-aware load balancing in a unified scheduling framework.
 
-    \subsubsection{Load Balancing Approaches}
-    Load balancing in fog computing is concerned with distributing incoming workloads evenly across available fog nodes to prevent bottlenecks and maximize resource utilization\cite{kashani2020foglb}. Existing approaches can be classified into centralized, decentralized, and gossip-based strategies.
+The proposed framework addresses the gap between fault detection and scheduling by combining gossip-based failure detection with the same CapacityScore delegation mechanism used for overload-driven load balancing. When a node is declared unavailable after missing $r$ consecutive gossip rounds, its pending tasks are reassigned to the highest-scoring available neighbour using the most recently maintained gossip state table, requiring no additional inter-node communication beyond what is already exchanged for load monitoring.
 
-    Recent studies have proposed various load-balancing strategies to address these challenges. For instance, the FOCALB architecture introduces a hybrid optimization-based load balancing framework designed for fog-based scientific workflow applications. The model utilizes metaheuristic algorithms to distribute workloads across fog nodes and improves resource utilization while reducing execution time and energy consumption\cite{kaur2021focalb}. Similarly, reinforcement learning–based load balancing approaches have been proposed to dynamically adapt to changing network conditions and unpredictable workloads in fog environments. Such approaches allow the system to intelligently allocate tasks across fog nodes while minimizing response time and processing delays. Experimental results demonstrate that reinforcement learning can outperform traditional scheduling algorithms such as Round Robin and nearest-node allocation\cite{ebrahim2023privacy}.
+\subsection{Privacy-Preserving Data Processing in IIoT and Fog Computing}
 
-    Multi-criteria decision-making methods have also been applied to load balancing in fog networks. In one study, the ELECTRE-based decision framework evaluates multiple factors such as computational load, network latency, and node availability to determine the most suitable fog node for task execution. This approach significantly improves overall system performance and resource utilization compared with conventional load-balancing strategies\cite{ref33}. More recent research focuses on adaptive resource allocation mechanisms that combine multiple decision-making techniques to optimize fog node selection. For example, hybrid models integrating Fuzzy Analytic Hierarchy Process (FAHP) and Technique for Order Preference by Similarity to Ideal Solution (FTOPSIS) have been proposed to rank fog nodes according to multiple criteria such as processing capability, workload status, and network conditions\cite{ahmed2024adaptive}. Simulation results indicate that such approaches can improve resource utilization and reduce workload imbalance in fog-cloud environments.
+Protecting sensitive IIoT sensor data during transit and processing at intermediate fog nodes is a central security requirement. Prior work has explored symmetric encryption at the sensor layer, privacy-preserving aggregation at fog nodes, and fine-grained access control at the cloud boundary.
 
-    \subsubsection{Fault Tolerance Approaches}
-    In addition to load balancing, fault tolerance plays an important role in ensuring the reliability of fog-based systems. Due to the decentralized and distributed nature of fog infrastructures, node failures can significantly affect system performance and service availability. Consequently, many studies integrate fault tolerance mechanisms with load balancing algorithms to enhance system resilience. For example, hybrid metaheuristic approaches combining Modified Harris Hawks Optimization (MHHO) with Ant Colony Optimization (ACO) have been proposed to simultaneously achieve efficient workload distribution and fault-tolerant scheduling in fog environments. Their approach identifies critical tasks and selectively applies replication or resubmission strategies when node failures occur. Experimental results demonstrated improvements in task reliability, energy efficiency, and overall system throughput\cite{ghasemi2024mohho}.
+\subsubsection{Homomorphic Encryption for Fog Aggregation}
 
-    Checkpointing and task replication are also widely used fault tolerance techniques in fog computing. Zhang et al. (2024) proposed a replica-based fault-tolerant scheduling strategy that creates backup task copies across multiple fog nodes. Their model ensures that tasks can still be completed even if a node fails, while also considering energy consumption and reliability constraints during scheduling\cite{liu2024fault}. Similarly, Rajab and Younis (2021) introduced a dynamic fault-tolerant scheduling approach based on checkpointing and replication mechanisms. Their model periodically stores task states and dynamically replicates data to backup nodes, enabling tasks to resume execution without restarting the entire process when failures occur\cite{rajab2021healthcare}.
+Homomorphic encryption enables computation directly on ciphertexts without decryption, making it suitable for privacy-preserving aggregation at fog nodes. Wang et al.\ proposed a Paillier-based privacy-preserving aggregation scheme for fog-assisted IIoT that demonstrated fault tolerance by handling missing sensor readings through blinding factor adjustments~\cite{wang2022}. Shang et al.\ combined Paillier homomorphic encryption with ECDSA signatures to build a fault-tolerant data aggregation scheme that resists collusion attacks between the fog node and the cloud~\cite{shang2023}. A recent fog-enabled secure analytics framework (FESDAO) extended Boneh-Goh-Nissim homomorphic encryption to support not only summation but statistical operations mean, variance, and ANOVA directly on encrypted data at the fog layer, without requiring decryption before analysis~\cite{fesdao2025}. These works collectively confirm the feasibility of fog-layer homomorphic aggregation; however, none addresses the dynamic workload delegation scenario in which sensors are reassigned mid-aggregation-window, which is central to the proposed framework.
 
-    Recent literature reviews further highlight the growing use of intelligent and adaptive resource management techniques in fog computing environments. In particular, machine learning and metaheuristic-based approaches are increasingly adopted to support dynamic load balancing and fault tolerance in large-scale IIoT systems. Despite these advancements, integrating efficient load balancing with robust fault tolerance remains an open research problem\cite{merah2024dlga}. Many existing approaches focus either on optimizing resource allocation or improving system reliability independently. Therefore, designing architectures that simultaneously support secure data aggregation, balanced workload distribution, and resilient fog node operation continues to be an important research direction in fog computing systems.
+The MOZAIK platform demonstrated an end-to-end privacy-preserving IoT-to-cloud architecture using both Secure Multi-Party Computation and Fully Homomorphic Encryption, showing that encrypted data pipelines can satisfy practical latency requirements~\cite{januszewicz2025}. However, MOZAIK targets cloud-centralised analytics and does not incorporate fog-layer load balancing or mid-window delegation semantics. The proposed framework directly addresses this gap by introducing a slot protocol that maintains aggregate correctness under dynamic sensor reassignment, using zero-fill ciphertexts to preserve IND-CPA indistinguishability of vacated slots.
 
+\subsubsection{Hybrid Cryptographic Pipelines}
+
+Practical IIoT systems increasingly combine symmetric, asymmetric, and homomorphic primitives into layered pipelines that balance security with performance. Qin et al.\ surveyed proxy re-encryption schemes and showed that PRE-based delegation achieves sub-15~ms overhead for typical IIoT payloads on commodity fog hardware~\cite{qin2022}, validating delegation latency as a practical concern. However, PRE requires key material to be present at an intermediate node during re-encryption, which creates a trust boundary conflict in hostile-fog threat models.
+
+The proposed framework replaces the PRE delegation layer with a Trusted Execution Environment (TEE) channel implemented via Intel SGX enclaves and a Key Management Module. This eliminates the need for the intermediate node to hold re-encryption key material in host memory, bounding the blast radius of fog node compromise to a single fog-scoped key group. This design follows the direction identified by recent surveys on secure fog computing, which emphasise hardware-rooted trust as the emerging approach for overcoming the limitations of software-only delegation schemes~\cite{nemati2024,kumar2023}.
+
+\subsubsection{Fine-Grained Access Control at the Cloud Boundary}
+
+Ciphertext-Policy Attribute-Based Encryption (CP-ABE) enforces data-centric access control by embedding an access policy directly into the ciphertext, so that only authorised principals satisfying the policy can decrypt. Li et al.\ demonstrated CP-ABE-based access control for smart grid data stored in the cloud, showing that the scheme scales gracefully as the number of attribute authorities and authorised consumers grows a property that suits multi-tenant Kubernetes analytics deployments~\cite{li2013}. Yang et al.\ integrated CP-ABE enforcement at the fog tier before data reaches the cloud, reducing the exposure window for sensitive IIoT data~\cite{yang2013}. In the proposed framework, CP-ABE is applied at the cloud boundary to protect the aggregated ciphertext rather than at the fog layer, consistent with an honest-but-curious cloud threat model where fog nodes are trusted to aggregate but not to store plaintext results.
 
     \section{Preliminaries}
     \subsection{System Architecture}
@@ -278,7 +182,7 @@
     \begin{itemize}
         \item \textbf{IIoT Sensor Layer}: IIoT sensors collect environmental or industrial monitoring data. Each sensor sends one AES-128-GCM encrypted reading per aggregation window using the fog-scoped key of its assigned fog node.
         \item \textbf{Edge Gateway Layer}: A local gateway verifies the AES-GCM authentication tag and forwards accepted ciphertexts to the assigned fog node.
-        \item \textbf{Fog SGX Enclave Layer}: Each fog node hosts an SGX enclave that seals its local $k_{fogI}$ and $sk_P$, decrypts accepted AES readings, and encrypts scaled readings under Paillier without exposing plaintext to the host OS.
+        \item \textbf{Fog SGX Enclave Layer}: Each fog node hosts an SGX enclave that seals its local $k_{fogI}$, decrypts accepted AES readings, and encrypts scaled readings under Paillier without exposing plaintext to the host OS. $sk_P$ and $k_{store}$ are held exclusively in the dedicated storage-preparation enclave provisioned by the KMM at window close.
         \item \textbf{Fog Paillier Aggregation Layer}: Fog host memory maintains a running Paillier aggregate $C_{agg,F_i}$ for the current $W=500\,ms$ window using additive homomorphic operations.
         \item \textbf{Fog Load-Balancing Layer}: Fog nodes exchange workload status through gossip every $T_g=500\,ms$. Delegation is checked per incoming reading using $LastKnownWorkload$ and executed through KMM-provisioned enclave processing.
         \item \textbf{Key Management and Window Combine}: The KMM provisions keys only after remote attestation, maintains $slot\_map$, and combines one aggregate ciphertext per fog node at window close.
@@ -288,23 +192,23 @@
     \subsection{Subsystem Interaction Overview}
     The subsystems interact in a sequential pipeline with a conditional branch at the fog layer. Under normal operation, sensor-encrypted data flows from the IIoT Sensor Layer through the Edge Gateway to the primary Fog Node, where the enclave converts AES ciphertext into Paillier ciphertext using that fog node's scoped key. The fog host accumulates a running Paillier aggregate during the current window. When $LastKnownWorkload(F_A) \geq \tau$ for an incoming reading, Fog~A zero-fills that reading's local slot, notifies the KMM, and delegates the original AES ciphertext to Fog~B after the KMM provisions $k_{fogA}$ to Enclave~B. At each window close, the KMM combines one Paillier aggregate per fog node without decryption and sends the final aggregate to an enclave for storage preparation. The complete data pipeline can be summarized as
     \begin{equation}
-    m_i \rightarrow C_i^{AES} \rightarrow C_i^P \rightarrow C_{agg,F_i} \rightarrow C_{agg}^{final} \rightarrow C_{store}^{AES} \rightarrow C_{data}
+    m_i \rightarrow C_i^{AES} \rightarrow C_i^P \rightarrow C_{agg,F_i} \rightarrow C_{agg}^{final} \rightarrow C_{data}
     \end{equation}
 
     Sensor data is encrypted, transformed inside an attested enclave for Paillier aggregation, combined by the KMM at window close, and securely stored in the cloud.
 
 
     \subsection{Threat Model}
-    The threat model assumes: (i) sensors are trusted but physically vulnerable to eavesdropping; (ii) the edge gateway verifies integrity but does not decrypt accepted sensor payloads; (iii) the fog-node host operating system is honest-but-curious, meaning it correctly forwards messages and performs Paillier additions but may attempt to inspect plaintext, intermediate values, or enclave memory; (iv) the TEE enclave on each fog node is trusted after successful remote attestation; (v) the KMM is trusted for fog-scoped key provisioning, slot mapping, revocation, and homomorphic window combine but never decrypts Paillier ciphertexts; (vi) the cloud is honest-but-curious; and (vii) network channels between layers are subject to eavesdropping. SGX hardware prevents the fog-node host OS from accessing enclave memory, so $k_{fogI}$, $sk_P$, $k_{store}$, plaintext measurements, and decrypted aggregates are visible only inside attested enclaves. The model permits partial loss of the current aggregation window if a fog node fails before its aggregate is delivered to the KMM.
+    The threat model assumes: (i) sensors are trusted but physically vulnerable to eavesdropping; (ii) the edge gateway verifies integrity but does not decrypt accepted sensor payloads; (iii) the fog-node host operating system is honest-but-curious, meaning it correctly forwards messages and performs Paillier additions but may attempt to inspect plaintext, intermediate values, or enclave memory; (iv) the TEE enclave on each fog node is trusted after successful remote attestation; (v) the KMM is trusted for fog-scoped key provisioning, slot mapping, revocation, and homomorphic window combine but never decrypts Paillier ciphertexts; (vi) the cloud is honest-but-curious; and (vii) network channels between layers are subject to eavesdropping. SGX hardware prevents the fog-node host OS from accessing enclave memory. $k_{fogI}$ and plaintext measurements are visible only inside each fog node's attested enclave; $sk_P$, $k_{store}$, and decrypted aggregates are visible only inside the dedicated storage-preparation enclave provisioned by the KMM. The model permits partial loss of the current aggregation window if a fog node fails before its aggregate is delivered to the KMM.
 
-    \subsubsection{Integrity-enhanced claim} If authenticated encryption is enabled for the AES stages, each protected payload is produced and verified as
+    \subsubsection{Integrity guarantee} Because the sensor and storage stages use AES-128-GCM, accepted payloads carry integrity protection under the standard nonce-uniqueness assumption. Each protected payload is produced and verified as
     \begin{equation}
     (C, T) = Enc_{GCM}(k, n, m, A)
     \end{equation}
     \begin{equation}
     m\ \text{or}\ \perp = DecVer_{GCM}(k, n, C, A, T)
     \end{equation}
-    where $T$ is an authentication tag, $n$ is a nonce, and $A$ is associated data. Under this enhanced mode, the scheme additionally provides payload integrity for accepted ciphertexts.
+    where $T$ is an authentication tag, $n$ is a nonce, and $A$ is associated data. This provides payload integrity for all accepted ciphertexts; the edge gateway rejects any reading whose tag fails verification.
 
     The model does not address denial-of-service attacks on the physical infrastructure.
 
@@ -358,10 +262,8 @@
     $C_{zero}$ & Paillier encryption of zero for a vacated slot \\
     $C_{agg,F_i}$ & Running Paillier aggregate at fog node $F_i$ \\
     $C_{agg}^{final}$ & KMM-combined aggregate across all fog nodes \\
-    $C_{store}^{AES}$ & AES ciphertext after Paillier-to-storage conversion \\
-    $C_{data}$ & Final encrypted data stored in cloud \\
+    $C_{data}$ & $Enc_{AES}(k_{store}, \{D_{agg}, \mathrm{metadata}\})$: single AES-GCM object stored in cloud \\
     $C_k$ & CP-ABE ciphertext of $k_{store}$ \\
-    $CT_{metadata}$ & Encrypted metadata for aggregated result \\
 
     \multicolumn{2}{l}{\textit{Cryptographic Operations}} \\
 
@@ -425,9 +327,11 @@
     sealed\_kFogA = Seal(k_{fogA}, ek_A)
     \end{equation}
 
+    The KMM retains $sk_P$ and $k_{store}$ and seals them for its own storage-preparation enclave:
     \begin{equation}
-    sealed\_sk_{P,A} = Seal(sk_P, ek_A)
+    sealed\_sk_P = Seal(sk_P,\, ek_{SP}), \quad sealed\_k_{store} = Seal(k_{store},\, ek_{SP})
     \end{equation}
+    where $ek_{SP}$ is the sealing key of the dedicated storage-preparation enclave. These keys are never provisioned to fog-node enclaves.
 
     The KMM builds $slot\_map:sensor\_id\rightarrow fog\_node$, stores $fog\_node\rightarrow k_{fogI}$ for delegation provisioning, sets $W=T_g=500\,ms$, and initializes each fog node aggregate as
     \begin{equation}
@@ -436,7 +340,7 @@
 
     \subsubsection{\textbf{Phase 2 Sensor Data Encryption}}
 
-    Each sensor sends one reading per window using AES-128-GCM under the fog-scoped key of its assigned fog node. A sensor assigned to Fog~A encrypts only with $k_{fogA}$. The edge gateway verifies the authentication tag before forwarding the ciphertext.
+    Each sensor sends four readings per $W=500\,\text{ms}$ aggregation window (one every 125~ms) using AES-128-GCM under the fog-scoped key of its assigned fog node. With 100~sensors across five fog nodes (20 per node), this yields 400~readings per window---the rate used in the E6 fault analysis. A single fog-node failure therefore affects 80 of 400 readings (20\% of window traffic) under an even sensor distribution. A sensor assigned to Fog~A encrypts only with $k_{fogA}$. The edge gateway verifies the authentication tag before forwarding the ciphertext.
 
     \begin{equation}
     (C_i^{AES},T_i) = Enc_{GCM}(k_{fogA}, n, m_i, A)
@@ -545,6 +449,9 @@
 
     For $k=10$ fog nodes, the table consumes $10\times 28=280$ bytes. On a Cortex-M3 class IIoT sensor with 32~KB RAM, this is less than 1\% of available RAM and remains negligible for the proposed deployment model. No hardware upgrade is required.
 
+    \paragraph{Sensor gossip table dissemination.}
+    The edge gateway rebroadcasts a signed summary of the current fog gossip table to all downstream sensors every $T_g = 500\,\text{ms}$. Each 280-byte summary is HMAC-authenticated with the receiving sensor's fog-scoped key $k_{fogI}$, allowing the sensor to verify that the table is fresh and untampered. This dissemination adds one 280-byte broadcast per $T_g$ interval per sensor, corresponding to approximately $0.56\,\text{KB/s}$ at $T_g=500\,\text{ms}$---a negligible overhead on 20~Mbps or higher links. This cost is included in the $1.055\times$ message-overhead figure reported in E6.
+
     \paragraph{Three-layer fault handling hierarchy.}
     The complete fault-handling system uses three layers, each covering failures that the previous layer cannot handle:
 
@@ -591,15 +498,12 @@
 
     \subsubsection{\textbf{Phase 5 Secure Storage Preparation}}
 
-    Inside the SGX enclave, the final Paillier aggregate is decrypted and re-encrypted for compact cloud storage. The Paillier secret key and aggregate plaintext never leave enclave memory.
+    The KMM forwards $C_{agg}^{final}$ to the dedicated storage-preparation enclave, the sole holder of $sk_P$ and $k_{store}$. Inside this enclave, the Paillier aggregate is decrypted and re-encrypted for compact cloud storage; both keys and the aggregate plaintext never leave enclave memory.
     \begin{equation}
     D_{agg} = Dec_P(sk_P, C_{agg}^{final})
     \end{equation}
     \begin{equation}
-    C_{store}^{AES} = Enc_{AES}(k_{store}, D_{agg})
-    \end{equation}
-    \begin{equation}
-    C_{data} = \{C_{store}^{AES}, CT_{metadata}\}
+    C_{data} = Enc_{AES}(k_{store},\, \{D_{agg},\, \mathrm{metadata}\})
     \end{equation}
     \begin{equation}
     C_k = Enc_{CP-ABE}(pk_{ABE}, k_{store}, P)
@@ -693,8 +597,7 @@
     \STATE Reset each $C_{agg,F_i}=Enc_P(pk_P,0)$ for the next window
     \STATE KMM revokes any delegated $k_{fogI}$ from receiving enclaves after the window closes
     \STATE $D_{agg}=Dec_P(sk_P,C_{agg}^{final})$ inside an attested enclave
-    \STATE $C_{store}^{AES}=Enc_{AES}(k_{store},D_{agg})$
-    \STATE $C_{data}=\{C_{store}^{AES},CT_{metadata}\}$
+    \STATE $C_{data}=Enc_{AES}(k_{store},\{D_{agg},\mathrm{metadata}\})$
     \STATE $C_k=Enc_{CP-ABE}(pk_{ABE},k_{store},P)$
     \STATE Store $\{C_{data},C_k\}$ in cloud
 
@@ -709,6 +612,7 @@
 
 
     \subsection{Load Balancing Mechanism}
+    \label{sec:lb}
     \subsubsection{Workload Monitoring and Overload Detection}
 
     Each fog node continuously monitors its system resources to determine its processing capability. Before aggregation, each raw metric is normalized to the range $[0,1]$ as
@@ -825,29 +729,25 @@
     P(p \geq 1) = 1 - P(0) = 1 - e^{-\mu T}
     \end{equation}
 
-    For gossip-based failure detection, the observation window is $T = rT_g$, where $r$ is the consecutive-miss threshold and $T_g$ is the gossip period. The probability of detecting at least one failure event within this observation window, conditioned on a failure process with rate $\mu$, is
+    For gossip-based failure detection, the observation window is $T = rT_g$, where $r$ is the consecutive-miss threshold and $T_g$ is the gossip period. Substituting gives the probability that at least one failure \emph{arrives} within the gossip observation window:
 
     \begin{equation}
-    \Pr\{\text{detect within } rT_g \mid \mu\} = 1 - e^{-\mu r T_g}
+    P(p \geq 1 \mid T = rT_g) = 1 - e^{-\mu r T_g}
     \end{equation}
 
-    If a deployment requires target detection probability $\beta$, the gossip period must satisfy
+    This is a failure-arrival model, not a detector model. The deterministic worst-case detection delay of the gossip mechanism is $rT_g$; smaller $T_g$ improves detection timeliness at the cost of higher gossip traffic. The arrival probability above can be used to bound the minimum inter-failure gap: if a deployment requires that two independent failures arrive within the same observation window with probability at most $\beta$, then $T_g$ should satisfy
 
     \begin{equation}
-    T_g \geq \frac{-\ln(1-\beta)}{\mu r}
+    T_g \leq \frac{-\ln(1-\beta)}{\mu r}
     \end{equation}
 
-    With $\beta = 0.95$, this becomes
-
-    \begin{equation}
-    T_g \geq \frac{\ln(20)}{\mu r}
-    \end{equation}
+    For $\beta = 0.95$ this gives $T_g \leq \ln(20)/(\mu r)$. In the proposed system, the gossip parameters $r=3$ and $T_g=500\,\text{ms}$ are chosen to bound the worst-case detection delay to $rT_g = 1.5\,\text{s}$; the ACK-redirect path (Fix 2, Phase 4b) reduces effective recovery latency to $150\,\text{ms}$ for the common single-node failure case.
 
     Several fault tolerance techniques have been proposed in the literature, including task replication, checkpointing, and fault-tolerant scheduling. Replication-based methods create backup copies of tasks across multiple nodes so that computation can continue even when a node fails. Similarly, checkpointing techniques \cite{goswami2004checkpoint} periodically store intermediate execution states, allowing tasks to resume from the last checkpoint rather than restarting from the beginning when failures occur. While these approaches improve system reliability, they often introduce additional storage overhead and computational costs, which may not be suitable for resource-constrained fog environments.
 
     To address these limitations, the proposed framework adopts a decentralized failure detection mechanism based on the gossip protocol. Gossip-based communication \cite{demers1988epidemic} was originally introduced in epidemic algorithms for distributed database maintenance, where information is propagated among nodes through random pairwise exchanges. In this approach, nodes periodically share their local state with randomly selected neighbors, allowing system information to gradually disseminate throughout the network without relying on centralized control.
 
-    In the proposed system, each fog node broadcasts a gossip message every $T_g = 500\,ms$ to a randomly selected subset of $k = 3$ neighboring nodes. A node is declared unavailable if it fails to respond for $r = 3$ consecutive gossip rounds, corresponding to a worst-case detection latency of $rT_g = 1.5\,s$. Under the Poisson detection model, this configuration gives $\Pr\{\text{detect within }1.5\,s \mid \mu\}=1-e^{-1.5\mu}$; for example, it reaches $0.95$ when $\mu \geq \ln(20)/1.5 \approx 2.0\,s^{-1}$.
+    In the proposed system, each fog node broadcasts a gossip message every $T_g = 500\,ms$ to a randomly selected subset of $k = 3$ neighboring nodes. A node is declared unavailable if it fails to respond for $r = 3$ consecutive gossip rounds, corresponding to a worst-case detection latency of $rT_g = 1.5\,s$. Under the Poisson failure-arrival model, the probability that at least one failure arrives within this window is $1-e^{-1.5\mu}$; for example, this reaches $0.95$ when $\mu \geq \ln(20)/1.5 \approx 2.0\,s^{-1}$, meaning the two-failure overlap bound is relevant only at very high failure rates.
 
     In the event of a network partition, a node that cannot reach any neighbor within $r$ rounds initiates local failover by promoting the highest-capacity known neighbor as the delegation target based on the last recorded capacity score.
 
@@ -888,9 +788,9 @@
 
     \textbf{Objective.} Quantify the per-window cloud storage reduction achieved by replacing $n$ individual sensor ciphertexts with a single Paillier aggregate followed by compact AES re-encryption.
 
-    \textbf{Setup and baselines.} For each sensor count $n\in\{10,50,100,200,500,1000\}$, total cloud storage is computed under four schemes: (i)~\emph{plaintext} ($n\times 8$~bytes), (ii)~\emph{AES-GCM per-reading} ($n\times 36$~bytes: 12-byte nonce, 8-byte ciphertext, 16-byte tag), (iii)~\emph{Paillier without aggregation} ($n\times 512$~bytes at 2048-bit key size), and (iv)~\emph{proposed} (one 512-byte Paillier aggregate, further reduced to 36~bytes after the storage preparation phase). No sensor is trusted with aggregation in any scheme.
+    \textbf{Setup and baselines.} For each sensor count $n\in\{10,50,100,200,500,1000\}$, total cloud storage is computed under four schemes: (i)~\emph{plaintext} ($n\times 8$~bytes), (ii)~\emph{AES-GCM per-reading} ($n\times 36$~bytes: 12-byte nonce, 8-byte ciphertext, 16-byte tag), (iii)~\emph{Paillier without aggregation} ($n\times 512$~bytes at 2048-bit key size), and (iv)~\emph{proposed} (one 512-byte Paillier aggregate, re-encrypted as a single AES-GCM object $C_{data}$ containing $D_{agg}$ and metadata; payload-only size is 36~bytes excluding nonce and tag). The total stored cloud object per window is $C_{data}$ (12-byte nonce + payload + 16-byte GCM tag) plus $C_k$ (CP-ABE ciphertext of $k_{store}$). Comparisons in the figure report payload-only sizes for consistency with baseline ciphertext sizes. No sensor is trusted with aggregation in any scheme.
 
-    \textbf{Results.} As shown in Fig.~\ref{fig:e1-storage}, the proposed method transmits and stores exactly one ciphertext per window regardless of $n$, reducing ciphertext count from $n$ to 1. Against the AES-GCM per-reading baseline, byte reduction reaches $100\times$ at $n=100$ and $1000\times$ at $n=1000$. Against the Paillier-without-aggregation baseline, the byte reduction factor equals the ciphertext count reduction at each $n$, since both use 512-byte ciphertexts. After the storage preparation phase, the single Paillier aggregate is re-encrypted under $k_{store}$ to produce a 36-byte AES-GCM record.
+    \textbf{Results.} As shown in Fig.~\ref{fig:e1-storage}, the proposed method transmits and stores exactly one ciphertext per window regardless of $n$, reducing ciphertext count from $n$ to 1. Against the AES-GCM per-reading baseline, byte reduction reaches $100\times$ at $n=100$ and $1000\times$ at $n=1000$. Against the Paillier-without-aggregation baseline, the byte reduction factor equals the ciphertext count reduction at each $n$, since both use 512-byte ciphertexts. After the storage preparation phase, the single Paillier aggregate is re-encrypted together with window metadata under $k_{store}$ to produce $C_{data}$; the payload component is 36~bytes (AES-GCM over the 8-byte aggregate value), with $C_k$ stored alongside.
 
     \textbf{Key takeaway.} Paillier slot aggregation reduces cloud storage from a function linear in $n$ to a constant independent of sensor count.
 
@@ -964,7 +864,7 @@
 
     \textbf{Objective.} Compare the proposed $CapacityScore$-based delegation strategy against three heuristic baselines under a realistic dynamic load scenario incorporating node overload and failure events.
 
-    \textbf{Setup and baselines.} A 20-window simulation with 100 tasks per window is run over five independent seeds. Tasks are partitioned as 70\% timeout-sensitive (TO) and 30\% latency-sensitive (LS). The window schedule introduces planned stress events: $F_2$ overload ($Workload=0.85>\tau$) during windows 6--10, $F_5$ failure during window 11 followed by gossip detection during windows 12--13 and recovery during windows 14--17, and a second $F_2$ overload ($Workload=0.90$) during windows 18--20. Four delegation strategies are compared: (1)~\emph{random} selection among available candidates; (2)~\emph{round-robin} cycling across candidates; (3)~\emph{threshold}, selecting the candidate with the minimum current workload; and (4)~\emph{capacity}, the proposed $CapacityScore$ strategy with task-adaptive weights.
+    \textbf{Setup and baselines.} A 20-window simulation with 100 tasks per window is run over five independent seeds. Tasks are partitioned as 70\% throughput-oriented / Heavy Processing (HP, $max\_delay > 100\,\text{ms}$) and 30\% Latency-Sensitive (LS, $max\_delay \leq 100\,\text{ms}$), matching the formal task taxonomy in Section~\ref{sec:lb}. HP tasks use weight configuration $(w_1,w_2,w_3)=(0.50,0.15,0.35)$; LS tasks use $(0.20,0.50,0.30)$. The window schedule introduces planned stress events: $F_2$ overload ($Workload=0.85>\tau$) during windows 6--10, $F_5$ failure during window 11 followed by gossip detection during windows 12--13 and recovery during windows 14--17, and a second $F_2$ overload ($Workload=0.90$) during windows 18--20. Four delegation strategies are compared: (1)~\emph{random} selection among available candidates; (2)~\emph{round-robin} cycling across candidates; (3)~\emph{threshold}, selecting the candidate with the minimum current workload; and (4)~\emph{capacity}, the proposed $CapacityScore$ strategy with task-adaptive weights.
 
     \textbf{Metrics.} Task completion rate, deadline satisfaction rate, re-delegation rate (fraction of tasks requiring a second delegation because the first target also became unavailable), and workload standard deviation across nodes are reported. Results are averaged over five seeds with 95\% confidence intervals.
 
@@ -986,9 +886,9 @@
 
     \textbf{Setup and baselines.} An analytical reading-loss model is evaluated over 30 simulation seeds and three failure scenarios: failure at the start of the observation window (\textit{fail\_0ms}), failure at 250~ms (\textit{mid\_window}), and failure at 450~ms (\textit{late\_window}). A total of 400 readings are generated per 500~ms window. Five baselines are evaluated: B1~gossip-based detection (failure declared after $r{=}3$ missed gossip rounds, detection latency $rT_g{=}1500\,\text{ms}$), B2~replication-based fault tolerance (each reading sent simultaneously to primary and backup), B3~checkpoint/restart (periodic checkpoint at 500~ms intervals, restore latency 500~ms), B4~multilayer detection (infrastructure and application layers combined, detection latency 500~ms), and B5~fog-cluster coordination (coordinator detects failure, selects replacement, and reroutes, total latency 750~ms). The proposed method uses sensor ACK timeout $T_{ack}{=}100\,\text{ms}$ followed by KMM key provisioning $T_{KMM}{=}50\,\text{ms}$, yielding a total recovery latency of 150~ms. All results are derived from the analytical model and should be interpreted as estimates relative to the modeled baselines rather than empirically measured end-to-end comparisons.
 
-    \textbf{Results.} Fig.~\ref{fig:e6-fault} shows data loss rates and recovery latency across methods. In the worst-case scenario (failure at $t{=}0$), the proposed method loses approximately 6.5\% of readings (26 of 400 during the 150~ms recovery window), compared with 75\% for B1 gossip (1500~ms detection window), 25\% each for B3 checkpoint and B4 multilayer (500~ms windows), and approximately 38\% for B5 clustering (750~ms window). B2 replication achieves zero data loss at the cost of doubling message overhead. The proposed method incurs a message overhead of $1.055\times$ the baseline, attributable to per-reading ACK messages and two KMM provisioning messages per recovery event. Fig.~\ref{fig:e6-tradeoff} illustrates the data-loss versus message-overhead tradeoff space; the proposed method is nearest to the origin among single-mechanism approaches.
+    \textbf{Results.} Fig.~\ref{fig:e6-fault} shows data loss rates and recovery latency across methods. With 400 readings per 500~ms window and one failed fog node serving 20 sensors (20\% of traffic), loss is proportional to the recovery window. In the worst-case scenario (failure at $t{=}0$), the proposed method loses approximately 6\% of readings ($\approx$24 of 400 during the 150~ms recovery window), compared with 60\% for B1 gossip (1500~ms spanning three window durations), 20\% each for B3 checkpoint and B4 multilayer (500~ms detection windows), and approximately 30\% for B5 clustering (750~ms window). B2 replication achieves zero data loss at the cost of doubling message overhead. The proposed method incurs a message overhead of $1.055\times$ the baseline, attributable to per-reading ACK messages and two KMM provisioning messages per recovery event. Fig.~\ref{fig:e6-tradeoff} illustrates the data-loss versus message-overhead tradeoff space; the proposed method is nearest to the origin among single-mechanism approaches.
 
-    \textbf{Key takeaway.} The proposed ACK+KMM mechanism reduces worst-case data loss from 75\% (gossip-only) to approximately 6.5\% while incurring only a 5.5\% increase in message overhead, representing a favorable tradeoff relative to all compared baselines except B2 replication, which achieves zero data loss at $2\times$ message cost.
+    \textbf{Key takeaway.} The proposed ACK+KMM mechanism reduces worst-case data loss from 60\% (gossip-only) to approximately 6\% while incurring only a 5.5\% increase in message overhead, representing a favorable tradeoff relative to all compared baselines except B2 replication, which achieves zero data loss at $2\times$ message cost.
 
     \begin{figure}[htbp]
     \centering
@@ -1042,7 +942,7 @@
 
     \section{Future Work}
 
-    A limitation of the present work is that the $CapacityScore$ weights $(w_1, w_2, w_3)$ are fixed heuristics selected by task classification rather than learned from observed workload distributions. The sensitivity analysis in E5 demonstrates that deadline satisfaction degrades when weights are misconfigured relative to the actual task mix, motivating data-driven weight adaptation. An important direction for future work is to replace the static weight table with an online learning mechanism---such as a contextual bandit or lightweight reinforcement learning policy---that adjusts weights based on observed deadline miss rates and node utilization histories across aggregation windows. Additionally, the workload update model in E5 uses a formula-based service time derived from static node profiles rather than a principled queuing model; extending the simulation to a discrete-event framework with explicit queue dynamics (e.g., M/M/$c$ per node) would produce more accurate estimates of redelegation rates and deadline miss probabilities at larger scales. The present evaluation covers five fog nodes, 20 windows, and 100 tasks per window; characterizing system behavior under hundreds of nodes and high-variance arrival rates represents a necessary step toward deployment-scale validation. Furthermore, the current Paillier-based aggregation layer supports only additive operations---sum, mean, and weighted sum. Future work will extend the scheme to CKKS-based slot batching to support multiplicative aggregation functions such as variance, threshold count, and nonlinear statistics, and to provide approximate arithmetic over packed sensor vectors with formally bounded noise growth.
+    A limitation of the present work is that the $CapacityScore$ weights $(w_1, w_2, w_3)$ are fixed heuristics selected by task classification rather than learned from observed workload distributions. The sensitivity analysis in E5 demonstrates that deadline satisfaction degrades when weights are misconfigured relative to the actual task mix, motivating data-driven weight adaptation. An important direction for future work is to replace the static weight table with an online learning mechanism---such as a contextual bandit or lightweight reinforcement learning policy---that adjusts weights based on observed deadline miss rates and node utilization histories across aggregation windows. Additionally, the workload update model in E5 uses a formula-based service time derived from static node profiles rather than a principled queuing model; extending the simulation to a discrete-event framework with explicit queue dynamics (e.g., M/M/$c$ per node) would produce more accurate estimates of redelegation rates and deadline miss probabilities at larger scales. The present evaluation covers five fog nodes, 20 windows, and 100 tasks per window; characterizing system behavior under hundreds of nodes and high-variance arrival rates represents a necessary step toward deployment-scale validation. Furthermore, the current Paillier-based aggregation layer supports only additive operations---sum, mean, and weighted sum. Future work will extend the scheme to CKKS-based slot batching to support multiplicative aggregation functions such as variance, product aggregation, and nonlinear statistics, and to provide approximate arithmetic over packed sensor vectors with formally bounded noise growth.
 
     The experimental evaluation rests on several simplifying assumptions that limit direct correspondence to real deployments. The SGX trusted execution environment is entirely simulated: \texttt{sgx\_enclave\_process} is implemented as an ordinary Python function performing AES decryption followed by Paillier encryption, with no actual enclave boundary, no sealing key derivation, and no remote attestation exchange. The KMM provisioning latency $T_{KMM}=50\,\text{ms}$ is a fixed design parameter rather than a measured quantity. Future work should implement the enclave layer using a real SGX SDK (e.g., Intel SGX SDK or Gramine) and validate provisioning latency on Skylake or Ice Lake class hardware. Similarly, the end-to-end pipeline latency in E7 is derived entirely from hardcoded hardware-target constants; these estimates should be replaced by measurements on physical fog hardware equipped with AES-NI and an SGX-capable processor. The CP-ABE cloud access control layer is fully specified in the scheme and notation but is absent from all experiment scripts: neither key generation, policy evaluation, nor attribute revocation overhead is measured. Integrating a standard CP-ABE implementation (e.g., Charm-Crypto) and characterizing its latency relative to the 500~ms aggregation window is an important open task. Finally, the multi-cluster Kubernetes analytics path described in the architecture has not been deployed or tested on any real cluster infrastructure; end-to-end validation of the authorized access path on a real Kubernetes environment would be required before the scheme can be considered production-ready.
 

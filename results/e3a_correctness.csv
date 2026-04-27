@@ -1,6 +1,6 @@
 n,k_delegated,trials,correct_scaled,accuracy_scaled_pct,median_quantization_error,max_quantization_error,max_scaled_error,median_trial_ms,zero_fill_security_note
-100,1,100,100,100.0,0.045050000000173895,0.0533000000004904,0.0,17232.673349964898,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
-100,5,100,100,100.0,0.04539999999997235,0.050700000000688306,0.0,7773.567299940623,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
-100,10,100,100,100.0,0.04515000000037617,0.053100000000085856,0.0,9092.111900041346,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
-100,20,100,100,100.0,0.0448500000002241,0.04849999999987631,0.0,23930.634449934587,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
-100,50,100,100,100.0,0.045750000000225555,0.051199999999880674,0.0,12918.01059996942,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
+100,1,100,100,100.0,0.045050000000173895,0.0533000000004904,0.0,7566.71305000782,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
+100,5,100,100,100.0,0.04539999999997235,0.050700000000688306,0.0,9241.381300031208,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
+100,10,100,100,100.0,0.04515000000037617,0.053100000000085856,0.0,11893.702850036789,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
+100,20,100,100,100.0,0.0448500000002241,0.04849999999987631,0.0,12204.765749978833,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
+100,50,100,100,100.0,0.045750000000225555,0.051199999999880674,0.0,12814.811599964742,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
