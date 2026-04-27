@@ -1,8 +1,8 @@
 """Cryptographic and KMM simulation primitives for P1 experiments.
 
-The Paillier implementation is intentionally small so the experiments remain
-reproducible without a notebook-only dependency. It is suitable for simulation,
-not for production cryptographic deployment.
+The preferred Paillier backend is ``phe``, matching the original notebook. A
+small pure-Python backend remains as a fallback for environments where ``phe``
+is unavailable.
 """
 
 from __future__ import annotations
@@ -16,6 +16,11 @@ import time
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from config import KMM_PROV_MS, SCALE
+
+try:
+    from phe import paillier as phe_paillier
+except ImportError:  # pragma: no cover - exercised only when dependency absent
+    phe_paillier = None
 
 
 def aes_key(rng: random.Random) -> bytes:
@@ -119,7 +124,53 @@ class EncryptedNumber:
         return max(1, (self.ciphertext.bit_length() + 7) // 8)
 
 
-def generate_paillier_keypair(bits: int, rng: random.Random) -> tuple[PaillierPublicKey, PaillierPrivateKey]:
+class PhePublicKeyAdapter:
+    """Adapter that makes phe's public key match this module's local API."""
+
+    def __init__(self, key: object):
+        self.key = key
+        self.n = key.n
+
+    @property
+    def n_square(self) -> int:
+        return self.n * self.n
+
+    def encrypt(self, plaintext: int, rng: random.Random | None = None) -> object:
+        return self.key.encrypt(plaintext)
+
+
+class PhePrivateKeyAdapter:
+    """Adapter that makes phe's private key match this module's local API."""
+
+    def __init__(self, key: object, public_key: PhePublicKeyAdapter):
+        self.key = key
+        self.public_key = public_key
+
+    def decrypt(self, encrypted: object) -> int:
+        return self.key.decrypt(encrypted)
+
+
+def paillier_backend_available() -> bool:
+    return phe_paillier is not None
+
+
+def paillier_backend_name(pub_key: object | None = None) -> str:
+    if isinstance(pub_key, PhePublicKeyAdapter):
+        return "phe"
+    if pub_key is not None:
+        return "pure-python"
+    return "phe" if paillier_backend_available() else "pure-python"
+
+
+def generate_paillier_keypair(bits: int, rng: random.Random, prefer_phe: bool = True) -> tuple[object, object]:
+    if prefer_phe and phe_paillier is not None:
+        pub, priv = phe_paillier.generate_paillier_keypair(n_length=bits)
+        pub_adapter = PhePublicKeyAdapter(pub)
+        return pub_adapter, PhePrivateKeyAdapter(priv, pub_adapter)
+    return generate_pure_paillier_keypair(bits, rng)
+
+
+def generate_pure_paillier_keypair(bits: int, rng: random.Random) -> tuple[PaillierPublicKey, PaillierPrivateKey]:
     half = bits // 2
     p = _prime(half, rng)
     q = _prime(bits - half, rng)
@@ -134,7 +185,11 @@ def generate_paillier_keypair(bits: int, rng: random.Random) -> tuple[PaillierPu
     return pub, PaillierPrivateKey(pub, lam, mu)
 
 
-def paillier_ciphertext_bytes(pub_key: PaillierPublicKey) -> int:
+def paillier_encrypt(pub_key: object, plaintext: int, rng: random.Random | None = None) -> object:
+    return pub_key.encrypt(plaintext, rng)
+
+
+def paillier_ciphertext_bytes(pub_key: object) -> int:
     return (pub_key.n_square.bit_length() + 7) // 8
 
 
@@ -142,16 +197,16 @@ def sgx_enclave_process(
     k_fog: bytes,
     nonce: bytes,
     ct: bytes,
-    pub_key: PaillierPublicKey,
+    pub_key: object,
     rng: random.Random,
-) -> EncryptedNumber:
+) -> object:
     value = aes_decrypt(k_fog, nonce, ct)
-    return pub_key.encrypt(int(value * SCALE), rng)
+    return paillier_encrypt(pub_key, int(value * SCALE), rng)
 
 
 def sgx_enclave_storage_prep(
-    c_agg_final: EncryptedNumber,
-    priv_key: PaillierPrivateKey,
+    c_agg_final: object,
+    priv_key: object,
     k_store: bytes,
     rng: random.Random,
 ) -> tuple[bytes, bytes, float]:
@@ -175,9 +230,9 @@ class KMM:
         if to_node in self.delegated:
             self.delegated[to_node].discard(from_node)
 
-    def combine(self, aggregates: dict[str, EncryptedNumber], pub_key: PaillierPublicKey) -> tuple[EncryptedNumber, float]:
+    def combine(self, aggregates: dict[str, object], pub_key: object) -> tuple[object, float]:
         t0 = time.perf_counter()
-        result = pub_key.encrypt(0)
+        result = paillier_encrypt(pub_key, 0)
         for ciphertext in aggregates.values():
             result = result + ciphertext
         return result, (time.perf_counter() - t0) * 1000.0

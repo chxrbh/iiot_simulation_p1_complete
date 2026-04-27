@@ -9,7 +9,7 @@ import sys
 import time
 
 from config import DEFAULT_KEY_BITS, DEFAULT_SEED, RESULTS_DIR
-from crypto_sim import generate_fog_keys, generate_paillier_keypair
+from crypto_sim import generate_fog_keys, generate_paillier_keypair, paillier_backend_name
 from experiments_p1 import run_e1, run_e2, run_e3a, run_e5
 from figures import generate_all
 from results import ensure_results_dir, metadata_rows, write_csv, write_summary
@@ -66,20 +66,28 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable terminal progress bars.",
     )
+    parser.add_argument(
+        "--show-figures",
+        action="store_true",
+        help="Display figures with matplotlib after saving them, similar to notebook plt.show().",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    if args.quick and args.results_dir == RESULTS_DIR:
+        args.results_dir = f"{RESULTS_DIR}_quick"
     seed = args.seed
     key_bits = 256 if args.quick else args.key_bits
     ensure_results_dir(args.results_dir)
     rng = random.Random(seed)
     print(f"Generating Paillier keypair with key_bits={key_bits}...")
     pub_key, priv_key = generate_paillier_keypair(key_bits, rng)
+    backend = paillier_backend_name(pub_key)
     k_fog, k_store = generate_fog_keys(["F1", "F2", "F3", "F4", "F5"], rng)
 
-    print(f"Running repaired P1 experiments with seed={seed}, key_bits={key_bits}")
+    print(f"Running repaired P1 experiments with seed={seed}, key_bits={key_bits}, paillier_backend={backend}")
     show_progress = not args.no_progress
     e1 = run_e1(pub_key)
     write_csv(os.path.join(args.results_dir, "e1_storage.csv"), e1)
@@ -125,9 +133,18 @@ def main() -> None:
     e5_progress.finish()
     write_csv(os.path.join(args.results_dir, "e5_capacity_score_runs.csv"), e5_runs)
     write_csv(os.path.join(args.results_dir, "e5_capacity_score.csv"), e5_agg)
-    write_csv(os.path.join(args.results_dir, "metadata.csv"), metadata_rows(seed, key_bits, quick=args.quick))
-    write_summary(os.path.join(args.results_dir, "summary.md"), e2, key_bits=key_bits, quick=args.quick)
-    generate_all(args.results_dir)
+    write_csv(
+        os.path.join(args.results_dir, "metadata.csv"),
+        metadata_rows(seed, key_bits, quick=args.quick, paillier_backend=backend),
+    )
+    write_summary(
+        os.path.join(args.results_dir, "summary.md"),
+        e2,
+        key_bits=key_bits,
+        quick=args.quick,
+        paillier_backend=backend,
+    )
+    generate_all(args.results_dir, show=args.show_figures)
     print(f"Done. Results written to {args.results_dir}/")
 
 

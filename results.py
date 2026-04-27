@@ -39,10 +39,11 @@ def package_version(name: str) -> str:
         return "not-installed"
 
 
-def metadata_rows(seed: int, key_bits: int, quick: bool = False) -> list[dict[str, object]]:
+def metadata_rows(seed: int, key_bits: int, quick: bool = False, paillier_backend: str = "unknown") -> list[dict[str, object]]:
     return [
         {"key": "seed", "value": seed},
         {"key": "key_bits", "value": key_bits},
+        {"key": "paillier_backend", "value": paillier_backend},
         {"key": "quick_smoke_run", "value": quick},
         {"key": "python", "value": sys.version.replace("\n", " ")},
         {"key": "platform", "value": platform.platform()},
@@ -55,7 +56,13 @@ def metadata_rows(seed: int, key_bits: int, quick: bool = False) -> list[dict[st
     ]
 
 
-def write_summary(path: str, e2_rows: list[dict[str, object]], key_bits: int, quick: bool = False) -> None:
+def write_summary(
+    path: str,
+    e2_rows: list[dict[str, object]],
+    key_bits: int,
+    quick: bool = False,
+    paillier_backend: str = "unknown",
+) -> None:
     violations = [row for row in e2_rows if not row["ours_within_500ms"]]
     conclusion = (
         "2048-bit Paillier violates the 500 ms aggregation window for at least one tested n."
@@ -67,6 +74,9 @@ def write_summary(path: str, e2_rows: list[dict[str, object]], key_bits: int, qu
     with open(path, "w", encoding="utf-8") as fh:
         fh.write("# Repaired P1 Experiment Summary\n\n")
         fh.write("This summary is generated from script-produced CSV files, not notebook state.\n\n")
-        fh.write(f"Run mode: {'quick smoke test' if quick else 'full configured experiment'}; key_bits={key_bits}.\n\n")
+        fh.write(
+            f"Run mode: {'quick smoke test' if quick else 'full configured experiment'}; "
+            f"key_bits={key_bits}; Paillier backend={paillier_backend}.\n\n"
+        )
         fh.write(f"## E2 Latency Conclusion\n{conclusion}\n\n")
         fh.write("Security note: SGX/TEE behavior is simulated; hardware isolation is a formal assumption.\n")

@@ -1,6 +1,3 @@
 n,k_delegated,trials,correct_scaled,accuracy_scaled_pct,median_quantization_error,max_quantization_error,max_scaled_error,median_trial_ms,zero_fill_security_note
-100,1,100,100,100.0,0.04539999999997235,0.05169999999998254,0.0,8769.914550008252,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
-100,5,100,100,100.0,0.04519999999956781,0.0543999999999869,0.0,8950.04244998563,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
-100,10,100,100,100.0,0.04535000000032596,0.0522000000000844,0.0,9292.33570001088,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
-100,20,100,100,100.0,0.044350000000122236,0.05259999999998399,0.0,10085.090300010052,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
-100,50,100,100,100.0,0.04545000000007349,0.05199999999967986,0.0,12567.224899947178,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
+10,1,2,2,100.0,0.004699999999957072,0.00479999999993197,0.0,11.461762500402983,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"
+10,5,2,2,100.0,0.004000000000019099,0.004000000000019099,0.0,11.569652499019867,"randomized Paillier zero-fill; indistinguishability argued cryptographically, not experimentally tested"

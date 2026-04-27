@@ -1,12 +1,12 @@
 key,value
 seed,42
-key_bits,2048
-quick_smoke_run,False
-python,"3.13.13 (tags/v3.13.13:01104ce, Apr  7 2026, 19:25:48) [MSC v.1944 64 bit (AMD64)]"
-platform,Windows-11-10.0.26200-SP0
-cpu,unknown
-cryptography,47.0.0
-matplotlib,3.10.8
-numpy,2.4.3
-pandas,3.0.1
-phe,1.5.0
+key_bits,256
+quick_smoke_run,True
+python,"3.12.3 (main, Mar 23 2026, 19:04:32) [GCC 13.3.0]"
+platform,Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.39
+cpu,13th Gen Intel(R) Core(TM) i5-13420H
+cryptography,41.0.7
+matplotlib,3.6.3
+numpy,1.26.4
+pandas,not-installed
+phe,not-installed

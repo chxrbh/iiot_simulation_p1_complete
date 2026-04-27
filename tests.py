@@ -12,6 +12,7 @@ from crypto_sim import (
     aes_encrypt,
     generate_fog_keys,
     generate_paillier_keypair,
+    paillier_encrypt,
     sgx_enclave_process,
 )
 from experiments_p1 import run_e1, run_e2, run_e3a, run_e5
@@ -28,14 +29,14 @@ class P1RepairTests(unittest.TestCase):
         self.assertEqual(aes_decrypt(self.k_fog["F1"], nonce, ct), 12.345)
 
     def test_paillier_scaled_addition(self) -> None:
-        a = self.pub.encrypt(12 * SCALE, self.rng)
-        b = self.pub.encrypt(7 * SCALE, self.rng)
+        a = paillier_encrypt(self.pub, 12 * SCALE, self.rng)
+        b = paillier_encrypt(self.pub, 7 * SCALE, self.rng)
         self.assertEqual(self.priv.decrypt(a + b), 19 * SCALE)
 
     def test_kmm_combine(self) -> None:
         kmm = KMM(self.k_fog)
-        c1 = self.pub.encrypt(4, self.rng)
-        c2 = self.pub.encrypt(9, self.rng)
+        c1 = paillier_encrypt(self.pub, 4, self.rng)
+        c2 = paillier_encrypt(self.pub, 9, self.rng)
         combined, _ = kmm.combine({"F1": c1, "F4": c2}, self.pub)
         self.assertEqual(self.priv.decrypt(combined), 13)
 

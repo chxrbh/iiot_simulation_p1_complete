@@ -34,6 +34,7 @@ from crypto_sim import (
     aes_decrypt,
     aes_encrypt,
     generate_fog_keys,
+    paillier_encrypt,
     paillier_ciphertext_bytes,
     sgx_enclave_process,
     sgx_enclave_storage_prep,
@@ -101,7 +102,7 @@ def _time_paillier_nobatch(
     t0 = time.perf_counter()
     pairs = [aes_encrypt(key, value, rng) for value in readings]
     ciphertexts = [sgx_enclave_process(key, nonce, ct, pub_key, rng) for nonce, ct in pairs]
-    cloud_aggregate = pub_key.encrypt(0, rng)
+    cloud_aggregate = paillier_encrypt(pub_key, 0, rng)
     for ciphertext in ciphertexts:
         cloud_aggregate = cloud_aggregate + ciphertext
     _ = priv_key.decrypt(cloud_aggregate) / SCALE
@@ -118,7 +119,7 @@ def _time_ours(
 ) -> tuple[float, float, float, float]:
     kmm = KMM({"F1": key})
     t0 = time.perf_counter()
-    agg = pub_key.encrypt(0, rng)
+    agg = paillier_encrypt(pub_key, 0, rng)
     t_enc0 = time.perf_counter()
     for value in readings:
         nonce, ct = aes_encrypt(key, value, rng)
@@ -203,12 +204,12 @@ def run_e3a(
             delegated = set(rng.sample(range(n), k))
             kmm = KMM(k_fog)
             delegated_key, _ = kmm.provision_key("F1", "F4")
-            agg_a = pub_key.encrypt(0, rng)
-            agg_b = pub_key.encrypt(0, rng)
+            agg_a = paillier_encrypt(pub_key, 0, rng)
+            agg_b = paillier_encrypt(pub_key, 0, rng)
             for i, value in enumerate(readings):
                 nonce, ct = aes_encrypt(k_fog["F1"], value, rng)
                 if i in delegated:
-                    agg_a = agg_a + pub_key.encrypt(0, rng)
+                    agg_a = agg_a + paillier_encrypt(pub_key, 0, rng)
                     agg_b = agg_b + sgx_enclave_process(delegated_key, nonce, ct, pub_key, rng)
                 else:
                     agg_a = agg_a + sgx_enclave_process(k_fog["F1"], nonce, ct, pub_key, rng)
@@ -261,9 +262,7 @@ def _pick(method: str, candidates: list[str], task_type: str, wt: dict[str, dict
     if method == "round_robin":
         return rr.pick(candidates, task_type, wt, rng)
     if method == "threshold":
-        if task_type == "LS":
-            return min(candidates, key=lambda nid: (wt[nid]["latency"], wt[nid]["queue"], wt[nid]["workload"]))
-        return min(candidates, key=lambda nid: (wt[nid]["workload"], wt[nid]["queue"], wt[nid]["latency"]))
+        return sorted(candidates)[0]
     if method == "capacity":
         return max(candidates, key=lambda nid: capacity_score(nid, wt, task_type))
     raise ValueError(f"Unknown E5 method: {method}")
@@ -284,7 +283,8 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
     rr = RoundRobin()
     schedule = build_schedule()
     total_tasks = completed = deadline_met = redelegated = 0
-    ls_total = ls_correct = to_total = to_correct = 0
+    delegated_tasks = 0
+    ls_delegated = ls_correct = to_delegated = to_correct = 0
     stdevs = []
     assignments = defaultdict(int)
     for window in schedule:
@@ -300,48 +300,53 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
         stdevs.append(statistics.pstdev(values["workload"] for values in wt_snapshot.values()))
         for task_idx in range(E5_TASKS_PER_WINDOW):
             task_type = "TO" if rng.random() < E5_TO_RATIO else "LS"
-            if task_type == "LS":
-                ls_total += 1
-            else:
-                to_total += 1
             source = "F2" if current["F2"]["workload"] >= TAU else f"F{1 + (task_idx % 5)}"
-            if source not in overloaded:
+            delegated_task = source in overloaded
+            if not delegated_task:
                 target = source
             else:
+                delegated_tasks += 1
+                if task_type == "LS":
+                    ls_delegated += 1
+                else:
+                    to_delegated += 1
                 candidates = [
                     nid
-                    for nid, values in current.items()
+                    for nid, values in wt_snapshot.items()
                     if nid not in overloaded and values["workload"] < TAU
                 ]
-                target = _pick(method, candidates, task_type, current, rng, rr)
+                target = _pick(method, candidates, task_type, wt_snapshot, rng, rr)
             total_tasks += 1
             if target is None:
-                redelegated += 1
+                if delegated_task:
+                    redelegated += 1
                 continue
             assignments[target] += 1
             latency = _service_time(target, task_type, current)
             deadline = 100.0 if task_type == "LS" else 1000.0
-            is_weak_overload = target == "F3" and current[target]["workload"] > 0.65
+            is_weak_overload = delegated_task and target == "F3"
             if is_weak_overload:
                 redelegated += 1
             else:
                 completed += 1
                 deadline_met += int(latency <= deadline)
-            if task_type == "LS":
+            if delegated_task and task_type == "LS":
                 ls_correct += int(target == "F4")
-            else:
+            elif delegated_task and task_type == "TO":
                 to_correct += int(target == "F1")
-            current[target]["workload"] = min(0.99, current[target]["workload"] + (0.006 if task_type == "LS" else 0.010))
-            current[target]["queue"] = min(0.99, current[target]["queue"] + (0.004 if task_type == "LS" else 0.007))
+            if delegated_task:
+                current[target]["workload"] = min(0.99, current[target]["workload"] + 0.10 / E5_TASKS_PER_WINDOW)
+                current[target]["queue"] = min(0.99, current[target]["queue"] + 0.06 / E5_TASKS_PER_WINDOW)
     return {
         "method": method,
         "seed": seed,
         "tasks": total_tasks,
+        "delegated_tasks": delegated_tasks,
         "completion_pct": completed / total_tasks * 100.0,
         "deadline_satisfaction_pct": deadline_met / total_tasks * 100.0,
-        "redelegation_rate_pct": redelegated / total_tasks * 100.0,
-        "ls_target_accuracy_pct": ls_correct / max(1, ls_total) * 100.0,
-        "to_target_accuracy_pct": to_correct / max(1, to_total) * 100.0,
+        "redelegation_rate_pct": redelegated / max(1, delegated_tasks) * 100.0,
+        "ls_target_accuracy_pct": ls_correct / max(1, ls_delegated) * 100.0,
+        "to_target_accuracy_pct": to_correct / max(1, to_delegated) * 100.0,
         "workload_stdev": statistics.mean(stdevs),
         "assignment_f1": assignments["F1"],
         "assignment_f3": assignments["F3"],
