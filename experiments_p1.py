@@ -40,6 +40,29 @@ from crypto_sim import (
     sgx_enclave_storage_prep,
 )
 
+CapacityWeights = dict[str, tuple[float, float, float]]
+
+DEFAULT_CAPACITY_WEIGHTS: CapacityWeights = {
+    "LS": (0.20, 0.50, 0.30),
+    "TO": (0.50, 0.15, 0.35),
+}
+
+CAPACITY_WEIGHT_VARIANTS: dict[str, CapacityWeights] = {
+    "configured": DEFAULT_CAPACITY_WEIGHTS,
+    "balanced": {
+        "LS": (1 / 3, 1 / 3, 1 / 3),
+        "TO": (1 / 3, 1 / 3, 1 / 3),
+    },
+    "load_heavy": {
+        "LS": (0.60, 0.20, 0.20),
+        "TO": (0.60, 0.20, 0.20),
+    },
+    "latency_heavy": {
+        "LS": (0.20, 0.60, 0.20),
+        "TO": (0.20, 0.60, 0.20),
+    },
+}
+
 
 def run_e1(pub_key: PaillierPublicKey) -> list[dict[str, object]]:
     paillier_bytes = paillier_ciphertext_bytes(pub_key)
@@ -254,7 +277,28 @@ class RoundRobin:
         return choice
 
 
-def _pick(method: str, candidates: list[str], task_type: str, wt: dict[str, dict[str, float]], rng: random.Random, rr: RoundRobin) -> str | None:
+def _capacity_score_weighted(
+    node_id: str,
+    wt: dict[str, dict[str, float]],
+    task_type: str,
+    capacity_weights: CapacityWeights | None = None,
+) -> float:
+    if capacity_weights is None:
+        return capacity_score(node_id, wt, task_type)
+    w1, w2, w3 = capacity_weights[task_type]
+    node = wt[node_id]
+    return w1 * (1 - node["workload"]) + w2 * (1 - node["latency"]) + w3 * (1 - node["queue"])
+
+
+def _pick(
+    method: str,
+    candidates: list[str],
+    task_type: str,
+    wt: dict[str, dict[str, float]],
+    rng: random.Random,
+    rr: RoundRobin,
+    capacity_weights: CapacityWeights | None = None,
+) -> str | None:
     if not candidates:
         return None
     if method == "random":
@@ -264,7 +308,7 @@ def _pick(method: str, candidates: list[str], task_type: str, wt: dict[str, dict
     if method == "threshold":
         return min(candidates, key=lambda nid: wt[nid]["workload"])
     if method == "capacity":
-        return max(candidates, key=lambda nid: capacity_score(nid, wt, task_type))
+        return max(candidates, key=lambda nid: _capacity_score_weighted(nid, wt, task_type, capacity_weights))
     raise ValueError(f"Unknown E5 method: {method}")
 
 
@@ -277,7 +321,12 @@ def _service_time(node_id: str, task_type: str, wt: dict[str, dict[str, float]])
     return base * cpu_penalty + latency_penalty + queue_penalty
 
 
-def _run_e5_once(method: str, seed: int) -> dict[str, object]:
+def _run_e5_once(
+    method: str,
+    seed: int,
+    capacity_weights: CapacityWeights | None = None,
+    weight_variant: str = "",
+) -> dict[str, object]:
     rng = random.Random(seed)
     current = {nid: dict(values) for nid, values in BASE_WORKLOAD.items()}
     rr = RoundRobin()
@@ -322,7 +371,7 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
                     for nid, values in wt_snapshot.items()
                     if nid not in overloaded and values["workload"] < TAU
                 ]
-                target = _pick(method, candidates, task_type, wt_snapshot, rng, rr)
+                target = _pick(method, candidates, task_type, wt_snapshot, rng, rr, capacity_weights)
             total_tasks += 1
             if target is None:
                 if delegated_task:
@@ -353,12 +402,13 @@ def _run_e5_once(method: str, seed: int) -> dict[str, object]:
         "delegated_completion_pct": (delegated_tasks - redelegated) / max(1, delegated_tasks) * 100.0,
         "deadline_satisfaction_pct": deadline_met / total_tasks * 100.0,
         "redelegation_rate_pct": redelegated / max(1, delegated_tasks) * 100.0,
-        "ls_target_accuracy_pct": ls_correct / max(1, ls_delegated) * 100.0,
-        "to_target_accuracy_pct": to_correct / max(1, to_delegated) * 100.0,
+        "ls_policy_agreement_pct": ls_correct / max(1, ls_delegated) * 100.0,
+        "to_policy_agreement_pct": to_correct / max(1, to_delegated) * 100.0,
         "workload_stdev": statistics.mean(stdevs),
         "assignment_f1": assignments["F1"],
         "assignment_f3": assignments["F3"],
         "assignment_f4": assignments["F4"],
+        "weight_variant": weight_variant,
     }
 
 
@@ -382,8 +432,8 @@ def run_e5(
             "completion_pct",
             "deadline_satisfaction_pct",
             "redelegation_rate_pct",
-            "ls_target_accuracy_pct",
-            "to_target_accuracy_pct",
+            "ls_policy_agreement_pct",
+            "to_policy_agreement_pct",
             "workload_stdev",
         ]:
             values = [float(run[metric]) for run in method_runs]
@@ -393,6 +443,29 @@ def run_e5(
             row[f"{metric}_mean"] = mean
             row[f"{metric}_std"] = std
             row[f"{metric}_ci95"] = ci95
-        row["baseline_note"] = "simple heuristic baseline; no claim of state-of-the-art tuning"
+        row["baseline_note"] = "heuristic baseline; no claim of state-of-the-art tuning"
+        row["policy_agreement_note"] = "LS/TO policy agreement is synthetic and should not be read as ground-truth accuracy"
         aggregate.append(row)
     return runs, aggregate
+
+
+def run_e5_sensitivity(seeds: list[int] | None = None) -> list[dict[str, object]]:
+    seeds = seeds or SEEDS
+    rows = []
+    for variant, weights in CAPACITY_WEIGHT_VARIANTS.items():
+        runs = [_run_e5_once("capacity", seed, capacity_weights=weights, weight_variant=variant) for seed in seeds]
+        row: dict[str, object] = {"method": "capacity", "weight_variant": variant, "runs": len(runs)}
+        for metric in [
+            "completion_pct",
+            "deadline_satisfaction_pct",
+            "redelegation_rate_pct",
+            "ls_policy_agreement_pct",
+            "to_policy_agreement_pct",
+            "workload_stdev",
+        ]:
+            values = [float(run[metric]) for run in runs]
+            row[f"{metric}_mean"] = statistics.mean(values)
+            row[f"{metric}_std"] = statistics.stdev(values) if len(values) > 1 else 0.0
+        row["interpretation_note"] = "CapacityScore weight sensitivity; variants are heuristic, not tuned on a validation set"
+        rows.append(row)
+    return rows

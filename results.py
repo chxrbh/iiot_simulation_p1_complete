@@ -32,6 +32,52 @@ def read_csv(path: str) -> list[dict[str, str]]:
         return list(csv.DictReader(fh))
 
 
+def _metadata_map(rows: list[dict[str, str]]) -> dict[str, str]:
+    return {row["key"]: row["value"] for row in rows}
+
+
+def validate_p2_results(
+    results_dir: str,
+    *,
+    quick: bool,
+    key_bits: int,
+    expected_ciphertext_bytes: int,
+) -> None:
+    """Reject mixed quick/full P2 artifacts before figure generation."""
+    metadata_path = os.path.join(results_dir, "metadata_p2.csv")
+    e3b_path = os.path.join(results_dir, "e3b_multisource_correctness.csv")
+    e4_path = os.path.join(results_dir, "e4_kmm_combine.csv")
+    for path in [metadata_path, e3b_path, e4_path, os.path.join(results_dir, "e6_fault_detection.csv")]:
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Missing required P2 artifact: {path}")
+
+    metadata_values = _metadata_map(read_csv(metadata_path))
+    if metadata_values.get("quick_smoke_run") != str(quick):
+        raise ValueError(
+            f"P2 metadata quick_smoke_run={metadata_values.get('quick_smoke_run')} "
+            f"does not match current run quick={quick}"
+        )
+    if int(metadata_values.get("key_bits", "0")) != key_bits:
+        raise ValueError(
+            f"P2 metadata key_bits={metadata_values.get('key_bits')} does not match current run key_bits={key_bits}"
+        )
+
+    e3b_rows = read_csv(e3b_path)
+    expected_trials = 2 if quick else 100
+    e3b_trials = int(float(e3b_rows[0]["trials"]))
+    if e3b_trials != expected_trials:
+        raise ValueError(f"E3b trials={e3b_trials} does not match expected {expected_trials}")
+
+    e4_rows = read_csv(e4_path)
+    for row in e4_rows:
+        ciphertext_bytes = int(float(row["ciphertext_bytes"]))
+        if ciphertext_bytes != expected_ciphertext_bytes:
+            raise ValueError(
+                f"E4 ciphertext_bytes={ciphertext_bytes} does not match expected "
+                f"{expected_ciphertext_bytes} for key_bits={key_bits}"
+            )
+
+
 def package_version(name: str) -> str:
     try:
         return metadata.version(name)
@@ -79,7 +125,14 @@ def write_summary(
             f"key_bits={key_bits}; Paillier backend={paillier_backend}.\n\n"
         )
         fh.write(f"## E2 Latency Conclusion\n{conclusion}\n\n")
-        fh.write("Security note: SGX/TEE behavior is simulated; hardware isolation is a formal assumption.\n")
+        fh.write(
+            "Interpretation: E2 is a measured Python cryptographic pipeline. For 2048-bit Paillier, "
+            "these results do not support a 500 ms real-time feasibility claim.\n\n"
+        )
+        fh.write(
+            "Security note: SGX/TEE behavior is simulated; E3-style correctness checks are not security proofs, "
+            "and hardware isolation remains a formal assumption.\n"
+        )
 
 
 def write_p2_summary(
@@ -96,6 +149,10 @@ def write_p2_summary(
             f"key_bits={key_bits}; Paillier backend={paillier_backend}.\n\n"
         )
         fh.write("Implemented P2 experiments: E3b multi-source correctness, E4 KMM combine overhead, and E6 ACK/KMM fault recovery.\n\n")
+        fh.write(
+            "E3b note: multi-source correctness is a scaled-sum arithmetic sanity check; it is not a cryptographic "
+            "security proof or an SGX isolation experiment.\n\n"
+        )
         fh.write(
             "E6 note: fault recovery is an analytical reading-loss model comparing B1 gossip-based detection, "
             "B2 replication-based fault tolerance, B3 checkpoint/restart, B4 multilayer detection, "

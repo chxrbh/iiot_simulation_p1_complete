@@ -10,7 +10,7 @@ import time
 
 from config import DEFAULT_KEY_BITS, DEFAULT_SEED, RESULTS_DIR
 from crypto_sim import generate_fog_keys, generate_paillier_keypair, paillier_backend_name
-from experiments_p1 import run_e1, run_e2, run_e3a, run_e5
+from experiments_p1 import run_e1, run_e2, run_e3a, run_e5, run_e5_sensitivity
 from figures import generate_all
 from results import ensure_results_dir, metadata_rows, write_csv, write_summary
 
@@ -133,6 +133,7 @@ def main() -> None:
     e5_progress.finish()
     write_csv(os.path.join(args.results_dir, "e5_capacity_score_runs.csv"), e5_runs)
     write_csv(os.path.join(args.results_dir, "e5_capacity_score.csv"), e5_agg)
+    write_csv(os.path.join(args.results_dir, "e5_capacity_score_sensitivity.csv"), run_e5_sensitivity())
     write_csv(
         os.path.join(args.results_dir, "metadata.csv"),
         metadata_rows(seed, key_bits, quick=args.quick, paillier_backend=backend),

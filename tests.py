@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import tempfile
 import unittest
 
 from config import (
@@ -36,9 +37,10 @@ from crypto_sim import (
     paillier_encrypt,
     sgx_enclave_process,
 )
-from experiments_p1 import run_e1, run_e2, run_e3a, run_e5
+from experiments_p1 import run_e1, run_e2, run_e3a, run_e5, run_e5_sensitivity
 from experiments_p2 import run_e3b, run_e4, run_e6
 from experiments_p3 import run_e7, run_e8
+from results import validate_p2_results, write_csv
 
 
 class P1RepairTests(unittest.TestCase):
@@ -108,6 +110,17 @@ class P1RepairTests(unittest.TestCase):
         self.assertEqual({row["method"] for row in aggregate}, {"random", "round_robin", "threshold", "capacity"})
         for row in aggregate:
             self.assertIn("deadline_satisfaction_pct_ci95", row)
+            self.assertIn("ls_policy_agreement_pct_mean", row)
+            self.assertIn("policy_agreement_note", row)
+
+    def test_e5_sensitivity(self) -> None:
+        rows = run_e5_sensitivity(seeds=[1, 2])
+        self.assertGreaterEqual(len(rows), 4)
+        self.assertIn("configured", {row["weight_variant"] for row in rows})
+        for row in rows:
+            self.assertEqual(row["method"], "capacity")
+            self.assertIn("deadline_satisfaction_pct_mean", row)
+            self.assertIn("interpretation_note", row)
 
     def test_e3b_multisource_shape_and_edges(self) -> None:
         rows = run_e3b(self.pub, self.priv, self.k_fog, self.k_store, seed=7, trials=2)
@@ -123,6 +136,22 @@ class P1RepairTests(unittest.TestCase):
             self.assertEqual(row["he_additions"], row["k_fog_aggregates"] - 1)
             self.assertEqual(row["bytes_received"], row["k_fog_aggregates"] * row["ciphertext_bytes"])
         self.assertEqual(E4_K_VALUES, [1, 2, 5, 10, 20, 50, 100])
+
+    def test_p2_result_validation_rejects_mixed_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            write_csv(
+                f"{tmp}/metadata_p2.csv",
+                [
+                    {"key": "seed", "value": 42},
+                    {"key": "key_bits", "value": 2048},
+                    {"key": "quick_smoke_run", "value": False},
+                ],
+            )
+            write_csv(f"{tmp}/e3b_multisource_correctness.csv", [{"trials": 2}])
+            write_csv(f"{tmp}/e4_kmm_combine.csv", [{"ciphertext_bytes": 64}])
+            write_csv(f"{tmp}/e6_fault_detection.csv", [{"method": "proposed_ack_kmm"}])
+            with self.assertRaises(ValueError):
+                validate_p2_results(tmp, quick=False, key_bits=2048, expected_ciphertext_bytes=512)
 
     def test_e6_fault_model_pairs_and_ack_bound(self) -> None:
         rows = run_e6()

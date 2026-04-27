@@ -1,3 +1,8 @@
 k_fog_aggregates,he_additions,combine_latency_ms_median,combine_latency_ms_std,bytes_received,ciphertext_bytes,within_500ms,note
-2,1,0.006094996933825314,0.0,128,64,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
-5,4,0.010510004358366132,0.0,320,64,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+1,0,0.00327199995808769,0.0005827293711658149,512,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+2,1,0.045759999920846894,0.012535591052349226,1024,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+5,4,0.1430224997420737,0.04564908131670628,2560,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+10,9,0.28218899979037815,0.03319594540722014,5120,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+20,19,0.5774434998784272,0.27583266300953163,10240,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+50,49,1.4843610001662455,0.3385931451894786,25600,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"
+100,99,2.973555000153283,0.3890272995034751,51200,512,True,"KMM combine timing excludes ciphertext generation, zero encryption, and Paillier decryption"

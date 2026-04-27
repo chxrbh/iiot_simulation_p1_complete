@@ -249,12 +249,12 @@ def plot_e5(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     ax = axes[1, 1]
     x = np.arange(len(rows))
     width = 0.35
-    ax.bar(x - width / 2, [_float(row, "ls_target_accuracy_pct_mean") for row in rows], width, label="LS -> F4", color=bar_colors, edgecolor="white")
-    ax.bar(x + width / 2, [_float(row, "to_target_accuracy_pct_mean") for row in rows], width, label="TO -> F1", color=bar_colors, alpha=0.45, edgecolor="white")
+    ax.bar(x - width / 2, [_float(row, "ls_policy_agreement_pct_mean") for row in rows], width, label="LS policy -> F4", color=bar_colors, edgecolor="white")
+    ax.bar(x + width / 2, [_float(row, "to_policy_agreement_pct_mean") for row in rows], width, label="TO policy -> F1", color=bar_colors, alpha=0.45, edgecolor="white")
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=12, ha="right")
-    ax.set_ylabel("Target accuracy (%)")
-    ax.set_title("Task-aware target accuracy")
+    ax.set_ylabel("Synthetic policy agreement (%)")
+    ax.set_title("Task-policy agreement\n(not ground-truth accuracy)")
     ax.legend(fontsize=8)
 
     for axis in axes.flat:
@@ -262,9 +262,38 @@ def plot_e5(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
         axis.spines["right"].set_visible(False)
         axis.grid(True, alpha=0.3)
 
-    fig.suptitle("E5 - CapacityScore vs Delegation Baselines\nTask-level simulation across fixed seeds", fontweight="bold", y=1.02)
+    fig.suptitle("E5 - CapacityScore vs Heuristic Delegation Baselines\nTask-level simulation across fixed seeds", fontweight="bold", y=1.02)
     plt.tight_layout()
     _finish_figure(results_dir, "e5_capacity_score", show)
+
+
+def plot_e5_sensitivity(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    rows = read_csv(os.path.join(results_dir, "e5_capacity_score_sensitivity.csv"))
+    labels = [row["weight_variant"].replace("_", "\n") for row in rows]
+    x = np.arange(len(rows))
+    width = 0.35
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+
+    axes[0].bar(x - width / 2, [_float(row, "deadline_satisfaction_pct_mean") for row in rows], width, label="Deadline met", color=C["yours"], edgecolor="white")
+    axes[0].bar(x + width / 2, [_float(row, "completion_pct_mean") for row in rows], width, label="Completion", color=C["aes"], edgecolor="white")
+    axes[0].set_ylabel("Rate (%)")
+    axes[0].set_title("CapacityScore weight sensitivity")
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(labels)
+    axes[0].legend(fontsize=8)
+
+    axes[1].bar(x, [_float(row, "workload_stdev_mean") for row in rows], color=C["paillier"], width=0.45, edgecolor="white")
+    axes[1].set_ylabel("Mean workload std dev")
+    axes[1].set_title("Balance under alternate weights")
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(labels)
+
+    for axis in axes:
+        axis.spines["top"].set_visible(False)
+        axis.spines["right"].set_visible(False)
+        axis.grid(True, alpha=0.3)
+    plt.tight_layout()
+    _finish_figure(results_dir, "e5_capacity_score_sensitivity", show)
 
 
 def plot_e3b(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
@@ -277,7 +306,7 @@ def plot_e3b(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     ax.axhline(100, color="green", linestyle="--", lw=1.2, alpha=0.7)
     ax.set_ylim(95, 101.5)
     ax.set_ylabel("Scaled-sum correctness (%)")
-    ax.set_title("E3b - Multi-source slot correctness")
+    ax.set_title("E3b - Multi-source arithmetic correctness")
     ax.text(0, accuracy + 0.05, f"{accuracy:.0f}%", ha="center", va="bottom", fontweight="bold")
 
     ax2 = axes[1]
@@ -293,7 +322,7 @@ def plot_e3b(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     table.auto_set_font_size(False)
     table.set_fontsize(9)
     table.scale(1.1, 1.6)
-    ax2.set_title("E3b summary", pad=12)
+    ax2.set_title("E3b summary\nnot a security proof", pad=12)
     plt.tight_layout()
     _finish_figure(results_dir, "e3b_multisource_correctness", show)
 
@@ -314,7 +343,7 @@ def plot_e4(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     ax.axhline(WINDOW_MS, color="red", linestyle="--", lw=1, alpha=0.7, label="500 ms window")
     ax.set_xlabel("Fog aggregates combined (k)")
     ax.set_ylabel("KMM combine latency (ms)")
-    ax.set_title("E4a - KMM combine latency")
+    ax.set_title("E4a - KMM combine latency\nHE additions only")
     ax.legend(fontsize=8)
 
     ax2 = axes[1]
@@ -347,8 +376,8 @@ def plot_e6(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
         axes[0].bar(x + offset, loss_means, width, label=label, color=color)
         axes[1].bar(x + offset, latency_means, width, label=label, color=color)
     for ax, ylabel, title in [
-        (axes[0], "Mean data loss rate (%)", "E6a - Data loss by method"),
-        (axes[1], "Recovery latency (ms)", "E6b - Recovery latency by method"),
+        (axes[0], "Mean data loss rate (%)", "E6a - Analytical data loss by method"),
+        (axes[1], "Recovery latency (ms)", "E6b - Modeled recovery latency by method"),
     ]:
         ax.set_xticks(x)
         ax.set_xticklabels(scenarios, rotation=15, ha="right")
@@ -372,7 +401,7 @@ def plot_e6(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     axes[2].set_xticks(overhead_x)
     axes[2].set_xticklabels(methods, rotation=15, ha="right")
     axes[2].set_ylabel("Mean overhead factor vs baseline")
-    axes[2].set_title("E6c - Measured overhead by method")
+    axes[2].set_title("E6c - Analytical overhead by method")
     axes[2].legend(fontsize=8)
     plt.tight_layout()
     _finish_figure(results_dir, "e6_fault_detection", show)
@@ -424,7 +453,7 @@ def plot_e6_tradeoff(results_dir: str = RESULTS_DIR, show: bool = False) -> None
     ax.axvline(1.0, color="black", linestyle="--", lw=1, alpha=0.45)
     ax.set_xlabel("Mean message overhead factor")
     ax.set_ylabel("Mean data loss rate (%)")
-    ax.set_title("E6 - Fault-recovery loss/overhead trade-off")
+    ax.set_title("E6 - Modeled fault-recovery loss/overhead trade-off")
     ax.grid(True, alpha=0.25)
     ax.set_xlim(0.98, 2.08)
     ax.set_ylim(0.0, 82.0)
@@ -446,6 +475,7 @@ def generate_all(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     plot_e2(results_dir, show=show)
     plot_e3a(results_dir, show=show)
     plot_e5(results_dir, show=show)
+    plot_e5_sensitivity(results_dir, show=show)
 
 
 def generate_p2_all(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
@@ -494,7 +524,7 @@ def plot_e8(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     ax.set_xticks(x)
     ax.set_xticklabels(scenarios, rotation=15, ha="right")
     ax.set_ylabel("Sensors exposed (%)")
-    ax.set_title("E8 - Blast Radius: Global vs Fog-Scoped Keys")
+    ax.set_title("E8 - Analytical Blast Radius: Global vs Fog-Scoped Keys")
     ax.legend(fontsize=8)
     plt.tight_layout()
     _finish_figure(results_dir, "e8_blast_radius", show)
