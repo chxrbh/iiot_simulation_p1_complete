@@ -50,6 +50,27 @@ E6_CHECKPOINT_INTERVAL_MS = 250.0
 E6_GOSSIP_DETECT_MS = 1500.0
 E6_ACK_KEY_BYTES = 28
 
+E7_N = 100
+E7_NODE = "F2"
+E7_CLOUD_UPLOAD_MS = 10.0
+E7_METHODS = ["cloud_only", "fog_plaintext", "paillier_nobatch", "ours"]
+E7_STAGE_COLUMNS = [
+    "sensor_aes_ms",
+    "enclave_aes_to_paillier_ms",
+    "paillier_accum_ms",
+    "delegation_ms",
+    "kmm_combine_ms",
+    "storage_prep_ms",
+    "cloud_upload_ms",
+]
+
+E8_SCENARIOS = [
+    "one_fog_compromised",
+    "backup_during_delegation",
+    "kmm_compromised",
+    "host_os_reads_enclave",
+]
+
 FOG_NODES = {
     "F1": {
         "cpu_cap": 4,

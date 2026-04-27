@@ -97,3 +97,29 @@ def write_p2_summary(
         )
         fh.write("Implemented P2 experiments: E3b multi-source correctness, E4 KMM combine overhead, and E6 ACK/KMM fault detection.\n\n")
         fh.write("E6 note: fault detection is a deterministic analytical timing model, not live distributed fault injection.\n")
+
+
+def write_p3_summary(
+    path: str,
+    e7_summary_rows: list[dict[str, object]],
+    key_bits: int,
+    quick: bool = False,
+    paillier_backend: str = "unknown",
+) -> None:
+    ours = next((row for row in e7_summary_rows if row["method"] == "ours"), None)
+    if quick:
+        e7_conclusion = "This quick smoke run does not establish full 2048-bit end-to-end timing feasibility."
+    elif ours and int(ours["violates_500ms_windows"]) > 0 and key_bits == 2048:
+        e7_conclusion = "The full proposed pipeline violates the 500 ms window for at least one tested window."
+    else:
+        e7_conclusion = "All tested proposed-pipeline windows are within the 500 ms window."
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("# Repaired P3 Experiment Summary\n\n")
+        fh.write("This summary is generated from script-produced CSV files, not notebook state.\n\n")
+        fh.write(
+            f"Run mode: {'quick smoke test' if quick else 'full configured experiment'}; "
+            f"key_bits={key_bits}; Paillier backend={paillier_backend}.\n\n"
+        )
+        fh.write(f"## E7 End-to-End Pipeline\n{e7_conclusion}\n\n")
+        fh.write("E7 note: pipeline timing uses the same simulated TEE and Python crypto assumptions as P1/P2.\n\n")
+        fh.write("## E8 Blast Radius\nE8 is analytical exposure accounting, not cryptographic attack simulation or SGX penetration testing.\n")

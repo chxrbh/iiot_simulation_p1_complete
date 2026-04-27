@@ -1,0 +1,5 @@
+scenario,total_sensors,global_key_exposed,global_key_exposed_pct,fog_scoped_exposed,fog_scoped_exposed_pct,exposure_reduction_pct,model_note,interpretation
+one_fog_compromised,100,100,100.0,20,20.0,80.0,analytical exposure accounting; not a cryptographic attack simulation,fog-scoped key bounds exposure to one fog group
+backup_during_delegation,100,100,100.0,40,40.0,60.0,analytical exposure accounting; not a cryptographic attack simulation,backup has its local group plus one delegated source group
+kmm_compromised,100,100,100.0,100,100.0,0.0,analytical exposure accounting; not a cryptographic attack simulation,KMM is the trust anchor for both schemes
+host_os_reads_enclave,100,0,0.0,0,0.0,0.0,analytical exposure accounting; not a cryptographic attack simulation,"under simulated SGX assumption, enclave memory blocks host reads"

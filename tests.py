@@ -14,6 +14,9 @@ from config import (
     E4_K_VALUES,
     E6_FAILURE_SCENARIOS,
     E6_METHODS,
+    E7_METHODS,
+    E7_STAGE_COLUMNS,
+    E8_SCENARIOS,
     KMM_PROV_MS,
     SCALE,
     T_ACK_MS,
@@ -30,6 +33,7 @@ from crypto_sim import (
 )
 from experiments_p1 import run_e1, run_e2, run_e3a, run_e5
 from experiments_p2 import run_e3b, run_e4, run_e6
+from experiments_p3 import run_e7, run_e8
 
 
 class P1RepairTests(unittest.TestCase):
@@ -128,6 +132,42 @@ class P1RepairTests(unittest.TestCase):
         ack = next(row for row in before if row["method"] == "ack_kmm")
         self.assertGreater(replication["storage_overhead_factor"], ack["storage_overhead_factor"])
         self.assertGreaterEqual(none["data_loss_ms"], ack["data_loss_ms"])
+
+    def test_e7_pipeline_shape_totals_and_storage(self) -> None:
+        rows, summary = run_e7(
+            self.pub,
+            self.priv,
+            self.k_fog,
+            self.k_store,
+            seed=7,
+            n=5,
+            windows=2,
+        )
+        self.assertEqual(len(rows), 2 * len(E7_METHODS))
+        self.assertEqual({row["method"] for row in rows}, set(E7_METHODS))
+        self.assertEqual({row["method"] for row in summary}, set(E7_METHODS))
+        for row in rows:
+            for column in E7_STAGE_COLUMNS:
+                self.assertIn(column, row)
+            stage_total = sum(float(row[column]) for column in E7_STAGE_COLUMNS)
+            self.assertAlmostEqual(float(row["total_ms"]), stage_total, places=9)
+        storage_by_method = {row["method"]: row["storage_bytes_per_window"] for row in rows if row["window"] == 1}
+        self.assertGreater(storage_by_method["cloud_only"], storage_by_method["fog_plaintext"])
+        self.assertGreater(storage_by_method["paillier_nobatch"], storage_by_method["ours"])
+        self.assertNotEqual(storage_by_method["fog_plaintext"], storage_by_method["ours"])
+
+    def test_e8_blast_radius(self) -> None:
+        rows = run_e8()
+        self.assertEqual([row["scenario"] for row in rows], E8_SCENARIOS)
+        by_scenario = {row["scenario"]: row for row in rows}
+        one_fog = by_scenario["one_fog_compromised"]
+        self.assertEqual(one_fog["global_key_exposed_pct"], 100.0)
+        self.assertEqual(one_fog["fog_scoped_exposed_pct"], 20.0)
+        backup = by_scenario["backup_during_delegation"]
+        self.assertEqual(backup["fog_scoped_exposed_pct"], 40.0)
+        kmm = by_scenario["kmm_compromised"]
+        self.assertEqual(kmm["global_key_exposed_pct"], 100.0)
+        self.assertEqual(kmm["fog_scoped_exposed_pct"], 100.0)
 
 
 if __name__ == "__main__":

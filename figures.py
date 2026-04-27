@@ -342,6 +342,55 @@ def generate_p2_all(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
     plot_e6(results_dir, show=show)
 
 
+def plot_e7(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    rows = read_csv(os.path.join(results_dir, "e7_pipeline_latency_summary.csv"))
+    methods = [row["method"] for row in rows]
+    totals = [_float(row, "total_ms_median") for row in rows]
+    storage = [_float(row, "storage_bytes_per_window_median") for row in rows]
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+
+    ax = axes[0]
+    bars = ax.bar(methods, totals, color=[C["plain"], C["aes"], C["paillier"], C["yours"]], edgecolor="white")
+    ax.axhline(WINDOW_MS, color="red", linestyle="--", lw=1, alpha=0.7, label="500 ms window")
+    for bar, value in zip(bars, totals):
+        ax.text(bar.get_x() + bar.get_width() / 2, value, f"{value:.1f}", ha="center", va="bottom", fontsize=8)
+    ax.set_ylabel("Median end-to-end latency (ms)")
+    ax.set_title("E7a - Pipeline latency by method")
+    ax.tick_params(axis="x", labelrotation=12)
+    ax.legend(fontsize=8)
+
+    ax2 = axes[1]
+    ax2.bar(methods, storage, color=[C["plain"], C["aes"], C["paillier"], C["yours"]], edgecolor="white")
+    ax2.set_yscale("log")
+    ax2.set_ylabel("Median storage/window (bytes, log scale)")
+    ax2.set_title("E7b - Storage per window")
+    ax2.tick_params(axis="x", labelrotation=12)
+    plt.tight_layout()
+    _finish_figure(results_dir, "e7_pipeline_latency", show)
+
+
+def plot_e8(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    rows = read_csv(os.path.join(results_dir, "e8_blast_radius.csv"))
+    scenarios = [row["scenario"] for row in rows]
+    x = np.arange(len(rows))
+    width = 0.35
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    ax.bar(x - width / 2, [_float(row, "global_key_exposed_pct") for row in rows], width, label="Global key", color=C["paillier"], edgecolor="white")
+    ax.bar(x + width / 2, [_float(row, "fog_scoped_exposed_pct") for row in rows], width, label="Fog-scoped keys", color=C["yours"], edgecolor="white")
+    ax.set_xticks(x)
+    ax.set_xticklabels(scenarios, rotation=15, ha="right")
+    ax.set_ylabel("Sensors exposed (%)")
+    ax.set_title("E8 - Blast Radius: Global vs Fog-Scoped Keys")
+    ax.legend(fontsize=8)
+    plt.tight_layout()
+    _finish_figure(results_dir, "e8_blast_radius", show)
+
+
+def generate_p3_all(results_dir: str = RESULTS_DIR, show: bool = False) -> None:
+    plot_e7(results_dir, show=show)
+    plot_e8(results_dir, show=show)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate P1 figures from CSV results")
     parser.add_argument("--results-dir", default=RESULTS_DIR)

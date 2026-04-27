@@ -2,9 +2,9 @@
 
 This summary is generated from script-produced CSV files, not notebook state.
 
-Run mode: quick smoke test; key_bits=256.
+Run mode: full configured experiment; key_bits=2048; Paillier backend=phe.
 
 ## E2 Latency Conclusion
-This quick smoke run does not establish 2048-bit timing feasibility.
+2048-bit Paillier violates the 500 ms aggregation window for at least one tested n.
 
 Security note: SGX/TEE behavior is simulated; hardware isolation is a formal assumption.
